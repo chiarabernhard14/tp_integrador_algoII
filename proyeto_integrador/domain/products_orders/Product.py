@@ -1,31 +1,27 @@
+
 class Product:
     id_counter = 0
 
-    def __init__(self, name="", location=(0, 0, 0), stock=0):
+    def __init__(self, name="", rack=None, location=None, stock=0):
         Product.id_counter += 1
         self._id = Product.id_counter
         self.name = name
-        self.location = location
+        self.rack = rack
         self.stock = stock
+        self.location = location
 
     def take_product(self, quantity):
         self.stock -= quantity
+        if self.stock != 0:
+            self.update_location_z(quantity)
+        else:
+            self.rack = None
+            self.location = None
 
-    #Properties y Setters con validación necesaria: location, stock
+    def update_location_z(self, quantity):
+        self.location = (self.location[0], self.location[1], self.location[2]-quantity)
 
-    @property
-    def location(self):
-        return self._location
-
-    @location.setter
-    def location(self, value):
-        if not isinstance(value, (tuple, list)):
-            raise TypeError("La ubicación debe ser una tupla o lista de coordenadas.")
-        if len(value) not in (2, 3):
-            raise ValueError("La ubicación debe tener 2 o 3 coordenadas (x, y[, z]).")
-        if not all(isinstance(coord, (int, float)) for coord in value):
-            raise TypeError("Todas las coordenadas de la ubicación deben ser numéricas.")
-        self._location = tuple(value)
+    #Properties y Setters con validación necesaria: stock
 
     @property
     def stock(self):
@@ -38,6 +34,3 @@ class Product:
         if value < 0:
             raise ValueError("El stock no puede ser negativo.")
         self._stock = value
-
-    def __repr__(self):
-        return f"Product(id={self.id}, name='{self.name}', location={self.location}, stock={self.stock})"
