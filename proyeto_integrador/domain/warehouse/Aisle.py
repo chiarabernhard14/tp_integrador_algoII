@@ -1,6 +1,6 @@
 from Rack import Rack
 class Aisle:
-
+#lenght es la cantidad max de racks
     def __init__(self, start_node=(0, 0), end_node=(0, 0), racks=[]):
         self.start_node = start_node
         self.end_node = end_node

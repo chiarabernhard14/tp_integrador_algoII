@@ -1,4 +1,3 @@
-
 class Product:
     id_counter = 0
 
@@ -12,6 +11,7 @@ class Product:
 
     def take_product(self, quantity):
         self.stock -= quantity
+        self.rack.update_products(self, quantity)
         if self.stock != 0:
             self.update_location_z(quantity)
         else:

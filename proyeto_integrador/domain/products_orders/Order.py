@@ -11,9 +11,8 @@ class Order:
         self.status = status
 
     
-    def add_item(self, item):
-        if item is None or not isinstance(item, OrderItem):
-            raise ValueError("No se puede agregar un ítem nulo o no válido.")
+    def add_item(self, product, quantity):
+        item = OrderItem(product, quantity)
         self._items.append(item)
 
     #Properties y Setters con validación necesaria: priority, status
@@ -43,6 +42,3 @@ class Order:
         if normalized not in valid_statuses:
             raise ValueError(f"Estado '{value}' no válido. Opciones permitidas: {', '.join(valid_statuses)}.")
         self._status = normalized
-
-    def __repr__(self):
-        return f"Order(id={self.id}, items={len(self.items)}, priority={self.priority}, status='{self.status}')"

@@ -1,22 +1,11 @@
 class Warehouse:
-    """
-    Modela la estructura física global del almacén e integra todos sus componentes.
-    """
 
-    def __init__(self, graph=None, aisles=None, racks=None, products=None,
-                 dispatch_zones=None, doors=None, docks=None):
+    def __init__(self, graph=None, aisles=[], racks=[],
+                 dispatch_zones=[]):
         self.graph = graph if graph is not None else {}
         self.aisles = aisles if aisles is not None else {}
         self.racks = racks if racks is not None else {}
-        self.products = products if products is not None else {}
         self.dispatch_zones = dispatch_zones if dispatch_zones is not None else {}
-        
-        if docks is not None:
-            self.doors = docks
-        elif doors is not None:
-            self.doors = doors
-        else:
-            self.doors = {}
 
     # --- Properties and Setters ---
 

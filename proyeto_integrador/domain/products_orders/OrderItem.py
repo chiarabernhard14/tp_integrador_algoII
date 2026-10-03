@@ -19,10 +19,7 @@ class OrderItem:
     def quantity(self, value):
         if not isinstance(value, int):
             raise TypeError("La cantidad debe ser un número entero.")
-        if value < 0:
-            raise ValueError("La cantidad no puede ser negativa.")
+        if value <= 0:
+            raise ValueError("La cantidad debe ser mayor a 0.")
         self._quantity = value
 
-    def __repr__(self):
-        prod_id = getattr(self.product, 'id', self.product)
-        return f"OrderItem(product={prod_id}, quantity={self.quantity}, picked={self.picked})"
