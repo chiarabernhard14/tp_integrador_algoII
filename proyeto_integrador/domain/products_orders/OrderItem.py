@@ -1,9 +1,10 @@
 class OrderItem:
 
-    def __init__(self, product=None, quantity=0, picked=False):
+    def __init__(self, product=None, quantity=0, order=None, picked=False):
         self.product = product
         self.quantity = quantity
         self.picked = picked
+        self.order = order
 
     def pick_item(self):
         self.product.take_product(self.quantity)

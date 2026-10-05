@@ -3,7 +3,7 @@ from OrderItem import OrderItem
 class Order:
     id_counter = 0
 
-    def __init__(self, items=[], priority=1, status="PENDIENTE"):
+    def __init__(self, priority=1, status="PENDIENTE", items=[]):
         Order.id_counter += 1
         self._id = Order.id_counter
         self.items = items
@@ -12,10 +12,11 @@ class Order:
 
     
     def add_item(self, product, quantity):
-        item = OrderItem(product, quantity)
+        item = OrderItem(product, quantity, self)
         self._items.append(item)
 
     #Properties y Setters con validación necesaria: priority, status
+
 
     @property
     def priority(self):

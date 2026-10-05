@@ -1,21 +1,21 @@
 class Product:
     id_counter = 0
 
-    def __init__(self, name="", rack=None, location=None, stock=0):
+    def __init__(self, name="", stack=None, location=None, stock=0):
         Product.id_counter += 1
         self._id = Product.id_counter
         self.name = name
-        self.rack = rack
+        self.stack = stack
         self.stock = stock
         self.location = location
 
     def take_product(self, quantity):
         self.stock -= quantity
-        self.rack.update_products(self, quantity)
+        self.stack.update_products(self, quantity)
         if self.stock != 0:
             self.update_location_z(quantity)
         else:
-            self.rack = None
+            self.stack = None
             self.location = None
 
     def update_location_z(self, quantity):
