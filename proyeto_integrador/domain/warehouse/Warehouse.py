@@ -1,13 +1,74 @@
+from domain.warehouse import DispatchZone
+from domain.warehouse import Aisle
+from domain.warehouse import Rack
+from validation import validate_start_end, validate_coordinates
+
 class Warehouse:
 
-    def __init__(self, graph=None, aisles=[], racks=[],
-                 dispatch_zones=[]):
-        self.graph = graph if graph is not None else {}
-        self.aisles = aisles if aisles is not None else {}
-        self.racks = racks if racks is not None else {}
-        self.dispatch_zones = dispatch_zones if dispatch_zones is not None else {}
+    def __init__(self, width=0, height=0, dispatch_zones=[], racks=[], aisles=[], graph=None):
+        self.width = width
+        self.height = height
+        self.graph = graph
+        self.aisles = aisles
+        self.racks = racks
+        self.dispatch_zones = dispatch_zones
 
-    # --- Properties and Setters ---
+    def validate_inside_warehouse(self, node):
+        if not (0 <= node[0] <= self.width and 0 <= node[1] <= self.height):
+            raise ValueError("El nodo debe estar dentro de los límites del almacén.")
+
+    def validate_node(self, node, second=None):
+
+        self.validate_inside_warehouse(node)
+
+        if second is not None:
+            self.validate_inside_warehouse(second)
+            return validate_start_end(node, second)
+        
+        validate_coordinates(node)
+            
+
+    def validate_door(self, nodo_constante, nodo1_var, nodo2_var, max_constante, door_constante, door_var):
+        if nodo1_var > door_var or nodo2_var < door_var:
+            raise ValueError("La puerta debe estar dentro de la zona de despacho")
+        zone_constante = abs(nodo1_var-nodo2_var)
+
+        if nodo_constante < max_constante/2:
+            if door_constante!=0:
+                raise ValueError("La puerta debe estar en el perímetro del almacén")
+            zone_variable = nodo_constante
+        else:
+            if door_constante!=max_constante:
+                raise ValueError("La puerta debe estar en el perímetro del almacén")
+            zone_variable = max_constante-nodo_constante
+        
+        return zone_constante, zone_variable
+        
+
+    def add_dispatch_zone(self, nodes, door):
+        
+        nodes[0], nodes[1] = self.validate_node(nodes[0], nodes[1])
+
+        self.validate_node(door)
+
+        if nodes[0][0]==nodes[1][0]:
+            zone_h, zone_w = self.validate_door(nodes[0][0], nodes[0][1], nodes[1][1], self.width, door[0], door[1])     
+        else:
+            zone_w, zone_h = self.validate_door(nodes[0][1], nodes[0][0], nodes[1][0], self.height, door[1], door[0])
+        
+        zone = DispatchZone(nodes, door)
+        
+        self._dispatch_zones.append(zone)
+
+    def add_aisle(self, aisle):
+        if not isinstance(aisle, Aisle):
+            raise TypeError("El elemento a agregar debe ser una instancia de Aisle.")
+
+    def add_rack(self, rack):
+        if not isinstance(rack, Rack):
+            raise TypeError("El elemento a agregar debe ser una instancia de Rack.")
+
+    #Properties y Setters
 
     @property
     def graph(self):
@@ -30,14 +91,14 @@ class Warehouse:
         self._aisles = value
 
     @property
-    def racks(self):
-        return self._racks
+    def stacks(self):
+        return self._stacks
 
-    @racks.setter
-    def racks(self, value):
+    @stacks.setter
+    def stacks(self, value):
         if not isinstance(value, (dict, list)):
-            raise TypeError("racks debe ser un diccionario o lista de estanterías.")
-        self._racks = value
+            raise TypeError("stacks debe ser un diccionario o lista de estanterías.")
+        self._stacks = value
 
     @property
     def products(self):
@@ -59,24 +120,25 @@ class Warehouse:
             raise TypeError("dispatch_zones debe ser un diccionario o lista de zonas de despacho.")
         self._dispatch_zones = value
 
-    @property
-    def doors(self):
-        return self._doors
 
-    @doors.setter
-    def doors(self, value):
-        if not isinstance(value, (dict, list)):
-            raise TypeError("doors debe ser un diccionario o lista.")
-        self._doors = value
 
-    @property
-    def docks(self):
-        return self._doors
+    def get_intersections(self):
+        intersections = []
 
-    @docks.setter
-    def docks(self, value):
-        self.doors = value
+        horizontales = [a for a in self.aisles if a.direction == "HORIZONTAL"]
+        verticales   = [a for a in self.aisles if a.direction == "VERTICAL"]
 
-    def __repr__(self):
-        return (f"Warehouse(aisles={len(self.aisles)}, racks={len(self.racks)}, "
-                f"products={len(self.products)}, dispatch_zones={len(self.dispatch_zones)})")
+        for h in horizontales:
+            x_min = min(h.start_node[0], h.end_node[0])
+            x_max = max(h.start_node[0], h.end_node[0])
+            y_h   = h.start_node[1]  # y fijo del pasillo horizontal
+
+            for v in verticales:
+                y_min = min(v.start_node[1], v.end_node[1])
+                y_max = max(v.start_node[1], v.end_node[1])
+                x_v   = v.start_node[0]  # x fijo del pasillo vertical
+
+                if x_min <= x_v <= x_max and y_min <= y_h <= y_max:
+                    intersections.append((x_v, y_h))
+
+        return intersections
