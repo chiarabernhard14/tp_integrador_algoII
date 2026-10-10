@@ -47,11 +47,11 @@ class Stack:
 
     def update_products(self, product, quantity):
         self.height -= quantity
-        p = self.products.pop(0)
+        index = self.products.index(product)
 
-        while p is not None and p != product:
-            p.update_location_z(quantity)
-            p = self.products.pop(0)
+        for i in range(index):
+            #No se actualiza el producto porque eso ya se maneja desde Product.take_product()
+            self.products[i].update_location_z(quantity)
         
     @property
     def position(self):

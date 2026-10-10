@@ -15,6 +15,7 @@ class Product:
         if self.stock != 0:
             self.update_location_z(quantity)
         else:
+            self.stack.products.remove(self)
             self.stack = None
             self.location = None
 
