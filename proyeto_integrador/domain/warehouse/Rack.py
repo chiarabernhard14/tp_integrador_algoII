@@ -1,4 +1,4 @@
-from Stack import Stack
+from domain.warehouse.Stack import Stack
 class Rack:
     # length es la cantidad máxima de stacks que puede contener el rack
 

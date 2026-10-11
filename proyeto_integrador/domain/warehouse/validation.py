@@ -22,3 +22,10 @@ def validate_start_end(value, second_node):
             return second_node, value
 
     raise ValueError("La posición de comienzo y fin debe estar en la misma fila o columna.")
+
+# esto lo podemos sacar 
+def validate_segment(start_node, end_node):
+    start, end = validate_start_end(start_node, end_node)
+    if start == end:
+        raise ValueError("El segmento debe tener largo mayor que cero.")
+    return start, end

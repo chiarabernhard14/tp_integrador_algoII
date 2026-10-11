@@ -1,5 +1,5 @@
 from domain.products_orders.Product import Product
-from validation import validate_coordinates as validate_node
+from domain.warehouse.validation import validate_coordinates as validate_node
 class Stack:
 
     def __init__(self, x=0, y=0, height=0, products=[], position=None, rack=None, blocked=False):

@@ -12,6 +12,8 @@ import os
 import sys
 import argparse
 import ctypes
+import tkinter as tk
+from tkinter import filedialog, simpledialog
 
 try:
     ctypes.windll.user32.SetProcessDPIAware()
@@ -34,9 +36,12 @@ from almacen_demo import (
 
 # IMPORTANTE: Ajusta esta importación según cómo se llame tu función en Persistence.py
 try:
-    from simulation.Persistence import cargar_escenario
+    from simulation.Persistence import cargar_escenario, recuperar_ultimo_escenario
+    from simulation.Scenario import generar_escenario_aleatorio
 except ImportError:
     cargar_escenario = None
+    recuperar_ultimo_escenario = lambda: None
+    generar_escenario_aleatorio = None
 
 ANCHO = 1280
 ALTO = 780
@@ -215,10 +220,50 @@ class App:
         # Velocidad
         self.botones.append(Boton("vel_menos", "-", 1160, 240, 36, 26))
         self.botones.append(Boton("vel_mas", "+", 1204, 240, 36, 26))
+        self.botones.append(Boton("cargar", "Cargar escenario", 900, 715, 168, 30))
+        self.botones.append(Boton("generar", "Generar Aleatorio", 1078, 715, 168, 30))
 
 
     def _click(self, nombre):
-        if nombre.startswith("wave"):
+        if nombre == "cargar":
+            self.corriendo = False
+            root = tk.Tk()
+            root.attributes('-topmost', True)
+            root.withdraw()
+            ruta = filedialog.askopenfilename(
+                title="Seleccionar escenario JSON",
+                filetypes=[("Archivos JSON", "*.json")]
+            )
+            root.destroy()
+            
+            if ruta and cargar_escenario:
+                try:
+                    self.almacen = cargar_escenario(ruta)
+                    self.wave_idx = 0
+                    self._recargar()
+                except Exception as e:
+                    print(f"Error al cargar el escenario: {e}")
+                    
+        elif nombre == "generar":
+            self.corriendo = False
+            root = tk.Tk()
+            root.attributes('-topmost', True)
+            root.withdraw()
+            
+            # Pedimos parámetros al usuario
+            pedidos_in = simpledialog.askinteger("Generador", "Cantidad de pedidos:", initialvalue=10, parent=root)
+            prods_in = simpledialog.askinteger("Generador", "Cantidad de productos:", initialvalue=20, parent=root)
+            root.destroy()
+            
+            if pedidos_in and prods_in and generar_escenario_aleatorio:
+                ruta_auto = "escenarios/generado_auto.json"
+                generar_escenario_aleatorio(ruta_auto, cant_pedidos=pedidos_in, cant_productos=prods_in)
+                if cargar_escenario:
+                    self.almacen = cargar_escenario(ruta_auto)
+                    self.wave_idx = 0
+                    self._recargar()
+
+        elif nombre.startswith("wave"):
             self.wave_idx = int(nombre[4:])
             self._recargar()
         elif nombre == "estA":
@@ -844,27 +889,25 @@ class App:
 # MODIFICACIÓN: Bloque principal para atrapar argumentos de consola
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulador de Wave Picking")
-    parser.add_argument(
-        "--escenario", 
-        type=str, 
-        help="Ruta al archivo JSON del escenario a cargar",
-        default=None
-    )
+    parser.add_argument("--escenario", type=str, help="Ruta al archivo JSON a cargar", default=None)
     args = parser.parse_args()
 
-    almacen_cargado = None
-    if args.escenario:
-        if cargar_escenario:
-            try:
-                almacen_cargado = cargar_escenario(args.escenario)
-                print(f"Escenario '{args.escenario}' cargado exitosamente.")
-            except Exception as e:
-                print(f"Error al intentar cargar el escenario: {e}")
-                sys.exit(1)
-        else:
-            print("Advertencia: No se encontró la función 'cargar_escenario' en simulation.Persistence.")
-            print("Ejecutando con el AlmacenDemo por defecto...")
+    almacen_inicial = None
+    ruta_a_cargar = args.escenario
+    
+    # Si no se pasó ruta por consola, intentamos recuperar la última usada en caché
+    if not ruta_a_cargar and recuperar_ultimo_escenario:
+        ruta_a_cargar = recuperar_ultimo_escenario()
 
-    app = App(almacen_cargado)
+    # Si hay una ruta válida (ya sea por consola o memoria), la cargamos
+    if ruta_a_cargar and cargar_escenario:
+        try:
+            almacen_inicial = cargar_escenario(ruta_a_cargar)
+            print(f"Escenario recuperado: {ruta_a_cargar}")
+        except Exception as e:
+            print(f"No se pudo recuperar la caché: {e}")
+
+    app = App(almacen_inicial)
     app.correr()
     sys.exit(0)
+

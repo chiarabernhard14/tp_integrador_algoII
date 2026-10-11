@@ -13,6 +13,19 @@ class Warehouse:
         self.racks = racks
         self.dispatch_zones = dispatch_zones
 
+    """
+    Si dejamos esto nos aseguramos que pase por las validaciones de abajo, 
+    si no no lo haia, el estante entraba directo. 
+    def __init__(self, width, height, graph=None):
+        self.width = width
+        self.height = height
+        self.graph = graph if graph is not None else {}
+        self._aisles = []
+        self._racks = []
+        self._dispatch_zones = []
+    """
+    
+
     def validate_inside_warehouse(self, node):
         if not (0 <= node[0] <= self.width and 0 <= node[1] <= self.height):
             raise ValueError("El nodo debe estar dentro de los límites del almacén.")
@@ -69,6 +82,58 @@ class Warehouse:
             raise TypeError("El elemento a agregar debe ser una instancia de Rack.")
 
     #Properties y Setters
+
+    """
+    Hacemos que width y height sean positivos y obligatios.
+    Podemos sacar las properties de stacks y products en warehouse, ya que las 
+    stacks estan en cada rack y los productos dentro de cada  stack 
+    
+    @property
+    def width(self):
+        return self._width
+
+    @width.setter
+    def width(self, value):
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise TypeError("width debe ser un entero.")
+        if value <= 0:
+            raise ValueError("width debe ser mayor que cero.")
+        self._width = value
+
+    @property
+    def height(self):
+        return self._height
+
+    @height.setter
+    def height(self, value):
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise TypeError("height debe ser un entero.")
+        if value <= 0:
+            raise ValueError("height debe ser mayor que cero.")
+        self._height = value
+
+    @property
+    def graph(self):
+        return self._graph
+
+    @graph.setter
+    def graph(self, value):
+        if not isinstance(value, (dict, list)):
+            raise TypeError("El grafo debe ser un diccionario o lista de adyacencia.")
+        self._graph = value
+
+    @property
+    def aisles(self):
+        return tuple(self._aisles)
+
+    @property
+    def racks(self):
+        return tuple(self._racks)
+
+    @property
+    def dispatch_zones(self):
+        return tuple(self._dispatch_zones)
+    """
 
     @property
     def graph(self):
