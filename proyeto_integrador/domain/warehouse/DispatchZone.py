@@ -9,9 +9,11 @@ class DispatchZone(LinearElement):
         self.height = height
         self.door = door
 
-
+    #width y height se definen a partir de las dimensiones del warehouse
     #Nodes y door ya están validados según las propiedades
     #del warehouse desde el que fueron creados
+
+
 
     @property
     def width(self):

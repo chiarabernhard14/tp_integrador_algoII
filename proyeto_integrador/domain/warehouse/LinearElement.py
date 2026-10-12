@@ -1,4 +1,4 @@
-from domain.warehouse.validation import validate_segment   
+from validation import validate_segment   
 
 class LinearElement:
     
