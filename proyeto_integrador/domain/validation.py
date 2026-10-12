@@ -1,3 +1,17 @@
+def validate_positive_int(value, property="El valor"):
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{property} debe ser un entero.")
+    if value <= 0:
+        raise ValueError(f"{property} debe ser mayor a 0.")
+    return True
+
+def validate_non_negative_int(value, property="El valor"):
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{property} debe ser un entero.")
+    if value < 0:
+        raise ValueError(f"{property} debe ser mayor o igual a 0.")
+    return True
+
 def validate_coordinates(value, cantidad=2):
     if not isinstance(value, tuple) or len(value) != cantidad:
         raise TypeError(f"Debe ser una tupla de {cantidad} coordenadas.")

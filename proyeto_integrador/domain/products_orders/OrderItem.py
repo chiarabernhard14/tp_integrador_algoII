@@ -1,3 +1,5 @@
+from validation import validate_positive_int
+
 class OrderItem:
 
     def __init__(self, product=None, quantity=0, order=None, picked=False):
@@ -18,9 +20,6 @@ class OrderItem:
 
     @quantity.setter
     def quantity(self, value):
-        if not isinstance(value, int):
-            raise TypeError("La cantidad debe ser un número entero.")
-        if value <= 0:
-            raise ValueError("La cantidad debe ser mayor a 0.")
+        validate_positive_int(value,"La cantidad de unidades")
         self._quantity = value
 
