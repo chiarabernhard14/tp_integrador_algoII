@@ -15,8 +15,8 @@ def validate_non_negative_int(value, property="El valor"):
 def validate_coordinates(value, cantidad=2):
     if not isinstance(value, tuple) or len(value) != cantidad:
         raise TypeError(f"Debe ser una tupla de {cantidad} coordenadas.")
-    if not all(isinstance(coord, int) for coord in value):
-        raise TypeError("Las coordenadas deben ser enteros.")
+    for coord in value:
+        validate_non_negative_int(coord)
     return True
 
 def validate_start_end(value, second_node):
