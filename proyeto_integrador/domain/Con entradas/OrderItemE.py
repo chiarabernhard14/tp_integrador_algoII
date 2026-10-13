@@ -2,13 +2,16 @@ from validation import validate_positive_int
 
 class OrderItem:
 
-    def __init__(self, cantidad, producto=None, order=None):
+    def __init__(self, cantidad, producto_id, producto=None, order=None):
         self.cantidad = cantidad
         self.order = order
         self.producto = producto
+        self.producto_id = producto_id
         self.picked = False
 
     def pick_item(self):
+        if self.picked:
+            raise ValueError("Este item ya fue recogido.")
         if self.producto is not None:
             self.producto.take_product(self.cantidad)
             self.picked = True

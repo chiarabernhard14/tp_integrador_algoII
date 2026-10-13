@@ -6,10 +6,10 @@ class Order:
         self.id = id
         self.prioridad = prioridad
         self.estado = estado
-        self._items = items
+        self.items = items
 
-    def add_item(self, producto_id, cantidad, producto):
-        item = OrderItem(producto_id, cantidad, order=self)
+    def add_item(self, cantidad, producto_id, producto=None):
+        item = OrderItem(cantidad=cantidad, producto_id=producto_id, producto=producto, order=self)
         self._items.append(item)
 
     @property

@@ -14,7 +14,7 @@ class Product:
         rack_id,
         ubicacion,
         stock=0,
-        peso_kg=0.0
+        peso_kg=1.0
     ):  
         self.id = id
         self.nombre = nombre
@@ -25,7 +25,7 @@ class Product:
         self.peso_kg = peso_kg
 
     def take_product(self, quantity):
-        
+
         validate_positive_int(quantity, "La cantidad")
         if quantity > self.stock:
             raise ValueError("No hay stock suficiente.")
@@ -33,7 +33,7 @@ class Product:
         self.stock -= quantity
 
         if self.stock == 0:
-            self.stack.remove_product(self)
+            self.rack.remove_product(self)
 
     @property
     def id(self):
@@ -71,7 +71,8 @@ class Product:
             if norm[0:1] != "R":
                 raise ValueError("El rack_id debe empezar con 'R'")
             self._rack_id = norm
-        self._rack_id=None
+        else:   
+            self._rack_id = None
 
     @property
     def rack(self):

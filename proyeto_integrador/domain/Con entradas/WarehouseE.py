@@ -12,8 +12,8 @@ class Warehouse:
 
     def __init__(
         self,
-        ancho_x=18,
-        largo_y=16,
+        ancho_x,
+        largo_y,
         puertas={},
         dispatch_zones={},
         racks={},
@@ -81,16 +81,27 @@ class Warehouse:
 
     @property
     def dispatch_zones(self):
-        return self.zonas_despacho
+        return self._zonas_despacho
 
     @dispatch_zones.setter
     def dispatch_zones(self, value):
-        self.zonas_despacho = value
+        if not isinstance(value, list):
+            raise TypeError("dispatch_zones debe ser una lista.")
+        self._zonas_despacho = []
+        for z in value:
+            self.add_dispatch_zone(z)
 
     def add_dispatch_zone(self, zone):
         if not isinstance(zone, DispatchZone):
             raise TypeError("El elemento debe ser una instancia de DispatchZone.")
         self.validate_element_bounds(zone)
+
+        # Validar que puerta_id exista en las puertas registradas
+        puerta_ids = [d.id for d in self._puertas]
+        if zone.puerta_id not in puerta_ids:
+            raise ValueError(
+                f"La zona de despacho {zone.id} referencia la puerta '{zone.puerta_id}' que no existe en el warehouse."
+            )
 
         cells = set(zone.cells())
         if cells & self._occupied_by(self._racks):
@@ -187,10 +198,10 @@ class Warehouse:
     def add_picker(self, picker):
         if not isinstance(picker, Picker):
             raise TypeError("El elemento debe ser una instancia de Picker.")
-        self.validate_inside_warehouse(picker.posicion_inicial)
-        if not self.is_aisle(picker.posicion_inicial[0], picker.posicion_inicial[1]):
+        self.validate_inside_warehouse(picker.posicion)
+        if not self.is_aisle(picker.posicion[0], picker.posicion[1]):
             raise ValueError(
-                f"La posición inicial {picker.posicion_inicial} del picker debe ser una celda de pasillo."
+                f"La posición inicial {picker.posicion} del picker debe ser una celda de pasillo."
             )
         self._pickers.append(picker)
 

@@ -10,12 +10,12 @@ class Picker:
     def move_x(self, value):
         if abs(value) != 1:
             raise ValueError("No se puede mover más de una casilla")
-        self_posicion = (self._posicion[0] + value, self._posicion[1])
+        self._posicion = (self._posicion[0] + value, self._posicion[1])
 
     def move_y(self, value):
         if abs(value) != 1:
             raise ValueError("No se puede mover más de una casilla")
-        self_posicion = (self._posicion[0], self._posicion[1] + value)
+        self._posicion = (self._posicion[0], self._posicion[1] + value)
         
 
     @property
