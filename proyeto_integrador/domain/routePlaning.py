@@ -1,5 +1,5 @@
 import time
-from pathfinding import PathFinder
+from pathFinding import PathFinder
 import heapq
 
 class RouteFinder:
