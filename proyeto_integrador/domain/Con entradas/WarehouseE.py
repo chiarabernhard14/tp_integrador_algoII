@@ -16,12 +16,12 @@ class Warehouse:
         ancho_x,
         largo_y,
         puertas=None,
-        dispatch_zones=None,
+        zonas_despacho=None,
         racks=None,
-        aisles=None,
+        pasillos=None,
         pickers=None,
-        products=None,
-        orders=None,
+        productos=None,
+        pedidos=None,
         graph=None
     ):
         self.ancho_x = ancho_x
@@ -36,12 +36,12 @@ class Warehouse:
         self._pedidos = {}
 
         self.puertas = puertas if puertas is not None else {}
-        self.dispatch_zones = dispatch_zones if dispatch_zones is not None else {}
+        self.zonas_despacho = zonas_despacho if zonas_despacho is not None else {}
         self.racks = racks if racks is not None else {}
-        self.aisles = aisles if aisles is not None else {}
+        self.pasillos = pasillos if pasillos is not None else {}
         self.pickers = pickers if pickers is not None else {}
-        self.products = products if products is not None else {}
-        self.orders = orders if orders is not None else {}
+        self.productos = productos if productos is not None else {}
+        self.pedidos = pedidos if pedidos is not None else {}
         self.graph = graph if graph is not None else {}
 
     # Dimensiones
@@ -88,13 +88,13 @@ class Warehouse:
 
     # Zonas de despacho
     @property
-    def dispatch_zones(self):
+    def zonas_despacho(self):
         return self._zonas_despacho
 
-    @dispatch_zones.setter
-    def dispatch_zones(self, value):
+    @zonas_despacho.setter
+    def zonas_despacho(self, value):
         if not isinstance(value, dict):
-            raise TypeError("dispatch_zones debe ser un diccionario.")
+            raise TypeError("zonas_despacho debe ser un diccionario.")
         for zone in value.values():
             self.add_dispatch_zone(zone)
 
@@ -200,10 +200,7 @@ class Warehouse:
         if picker.id in self._pickers:
             raise ValueError("Ya existe un picker con el mismo id.")
         self.validate_inside_warehouse(picker.posicion)
-        if not self.is_aisle(picker.posicion[0], picker.posicion[1]):
-            raise ValueError(
-                "La posición inicial {picker.posicion} del picker debe ser una celda de pasillo."
-            )
+        
         self._pickers[picker.id] = picker
 
     # Productos
@@ -286,8 +283,8 @@ class Warehouse:
         return cells
     
     def build_graph_by_cell(self):
-        aisle_cells = self._occupied_by(self._aisles)
-        for a in self._aisles.values():
+        aisle_cells = self._occupied_by(self._pasillos)
+        for a in self._pasillos.values():
             vertices = a.cells()
 
             for v in vertices:
@@ -307,8 +304,8 @@ class Warehouse:
 
 
     def build_graph(self):
-        aisle_cells = self._occupied_by(self._aisles)
-        for a in self._aisles.values():
+        aisle_cells = self._occupied_by(self._pasillos)
+        for a in self._pasillos.values():
             x0, y0 = a.ubicacion
             y_sup = y0 + a.alto - 1
             x_der = x0 + a.ancho - 1
@@ -350,11 +347,3 @@ class Warehouse:
         self.graph.setdefault(destino, [])
         if all(nodo != destino for nodo, _ in self.graph[origen]):
             self.graph[origen].insert(0, (destino, distancia))
-
-            
-        
-
-
-
-
-
