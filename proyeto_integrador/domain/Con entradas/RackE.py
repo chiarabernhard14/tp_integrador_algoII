@@ -14,7 +14,7 @@ class Rack(RectangularElement):
         if ancho != 2 and alto != 2:
             raise ValueError("Uno de los dos lados del rack (ancho o alto) debe tener valor 2.")
 
-    def init_stacks(self):
+    def init_stacks(self):                             
         stacks = [[], []]
         mayor_dim = max(self.ancho, self.alto)
         for _ in range(mayor_dim):
@@ -38,22 +38,20 @@ class Rack(RectangularElement):
                 return self.stacks[0][stack_y]
             elif self.ubicacion[0] + 1 == x:
                 return self.stacks[1][stack_y]
-            else:
-                raise ValueError("No se puede acceder al estante desde esa posición.")
 
         elif self.alto == 2 and (stack_x := x - self.ubicacion[0]) >= 0:
             if self.ubicacion[1] == y:
                 return self.stacks[stack_x][0]
             elif self.ubicacion[1] + 1 == y:
                 return self.stacks[stack_x][1]
-            else:
-                raise ValueError("No se puede acceder al estante desde esa posición.")
+        
+        raise ValueError("No se puede acceder al estante desde esa posición.")
 
     def acc_stack_desde(self, x, y, desde_x, desde_y):
         if (abs(desde_x - x) == 1 and abs(desde_y - y) == 0) or (abs(desde_x - x) == 0 and abs(desde_y - y) == 1): 
             return self.acc_stack(x,y)
-        else: 
-            raise ValueError("No se puede acceder al estante desde esa posición.")
+        
+        raise ValueError("No se puede acceder al estante desde esa posición.")
     
     def add_product(self, product):
         if product is None:

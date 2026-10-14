@@ -39,9 +39,7 @@ class RectangularElement:
         x0, y0 = self._ubicacion
         return [(x0 + i, y0 + j) for i in range(self._ancho) for j in range(self._alto)]
 
-    def __contains__(self, point):
-        x0, y0 = self._ubicacion
-        return x0 <= point[0] < x0 + self._ancho and y0 <= point[1] < y0 + self._alto
+    
 
 
 

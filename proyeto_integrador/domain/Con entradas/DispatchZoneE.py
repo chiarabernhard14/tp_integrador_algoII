@@ -45,3 +45,7 @@ class DispatchZone(RectangularElement):
         if value <= 0:
             raise ValueError("El peso máximo debe ser mayor a 0.")
         self._peso_max_kg = float(value)
+
+    def contains(self, point):
+        x0, y0 = self._ubicacion
+        return x0 <= point[0] < x0 + self._ancho and y0 <= point[1] < y0 + self._alto

@@ -19,7 +19,7 @@ class Aisle(RectangularElement):
             raise TypeError("El id debe ser una cadena de texto.")
         norm = value.upper()
         if norm[0:4] != "PAS_":
-            raise ValueError("El id debe empezar con 'PAS_")
+            raise ValueError("El id debe empezar con 'PAS_'")
         self._id = norm
 
     @property
