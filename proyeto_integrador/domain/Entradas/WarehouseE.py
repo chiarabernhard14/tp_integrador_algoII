@@ -1,12 +1,12 @@
 import graphlib
-from validation import validate_positive_int
-from DoorE import Door
-from DispatchZoneE import DispatchZone
-from RackE import Rack
-from AisleE import Aisle
-from PickerE import Picker
-from ProductE import Product
-from OrderE import Order
+from domain.validation import validate_positive_int
+from .DoorE import Door
+from .DispatchZoneE import DispatchZone
+from .RackE import Rack
+from .AisleE import Aisle
+from .PickerE import Picker
+from .ProductE import Product
+from .OrderE import Order
 
 
 class Warehouse:

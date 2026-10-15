@@ -1,4 +1,4 @@
-from RectangularElement import RectangularElement
+from .RectangularElement import RectangularElement
 
 class DispatchZone(RectangularElement):
 

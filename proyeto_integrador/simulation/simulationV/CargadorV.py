@@ -10,37 +10,6 @@ from domain.Entradas.WarehouseE import Warehouse
 
 
 class WarehouseEscenario(Warehouse):
-    
-    def add_dispatch_zone(self, zone):
-        if not isinstance(zone, DispatchZone):
-            raise TypeError("El elemento debe ser una zona de despacho.")
-        if zone.id in self._zonas_despacho:
-            raise ValueError("Ya se registró esta zona de despacho")
-        self.validate_element_bounds(zone)
-
-        puerta = self._puertas.get(zone.puerta_id)
-        if puerta is None:
-            raise ValueError("La zona de despacho referencia una puerta que no existe en el warehouse.")
-        if not self._frente_a_puerta(zone, puerta):
-            raise ValueError("La zona de despacho no esta frente a la puerta asignada.")
-
-        celdas = set(zone.cells())
-        if celdas & self._occupied_by(self._racks):
-            raise ValueError("La zona de despacho se superpone con un rack.")
-        if celdas & self._occupied_by(self._zonas_despacho):
-            raise ValueError("La zona de despacho se superpone con otra.")
-        if celdas & self._occupied_by(self._pasillos):
-            raise ValueError("La zona de despacho se superpone con un pasillo.")
-
-        self._zonas_despacho[zone.id] = zone
-
-    def _frente_a_puerta(self, zone, puerta):
-        px = puerta.ubicacion[0]
-        py = puerta.ubicacion[1]
-        for x, y in zone.cells():
-            if abs(x - px) + abs(y - py) == 1:
-                return True
-        return False
 
     def add_product(self, product):
         if not isinstance(product, Product):
@@ -62,11 +31,8 @@ class WarehouseEscenario(Warehouse):
         product.rack = rack
         self._productos[product.id] = product
 
-
 def _z_del_producto(datos_producto):
     return datos_producto["ubicacion"]["z"]
-
-
 def cargar_warehouse(datos):
     datos_wh = datos["warehouse"]
     dim = datos_wh["dimensiones"]

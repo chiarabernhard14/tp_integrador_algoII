@@ -1,7 +1,7 @@
-from validation import validate_coordinates
+from domain.validation import validate_coordinates
 
 class Picker:
-    def __init__(self, id, posicion, capacidad_carga_kg, current_route=[]):
+    def __init__(self, id, posicion, capacidad_carga_kg, current_route=None):
         self.id = id
         self.posicion = posicion
         self.capacidad_carga_kg = capacidad_carga_kg

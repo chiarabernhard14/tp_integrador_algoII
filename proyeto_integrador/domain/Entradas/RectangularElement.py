@@ -1,4 +1,4 @@
-from validation import validate_coordinates, validate_positive_int
+from domain.validation import validate_coordinates, validate_positive_int
 
 
 class RectangularElement:

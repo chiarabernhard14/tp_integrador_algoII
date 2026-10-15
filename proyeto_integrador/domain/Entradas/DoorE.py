@@ -1,4 +1,4 @@
-from validation import validate_coordinates
+from domain.validation import validate_coordinates
 
 class Door:
 

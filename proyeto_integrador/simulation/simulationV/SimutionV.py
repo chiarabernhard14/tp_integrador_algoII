@@ -1,6 +1,7 @@
-from NavegationV import Navegacion
-from CargadorV import cargar_warehouse
+from .NavegationV import Navegacion
+from .CargadorV import cargar_warehouse
 
+LIMITE_BLOQUEO = 20
 
 def _clave_tarea(tarea):
     return (-tarea["prioridad"], tarea["producto_id"])
@@ -60,6 +61,10 @@ class Simulacion:
         self.terminada = False
         self.log = []
         self.fallidas = set()
+
+        # NUEVO: control de bloqueo global.
+        self.hubo_avance = False
+        self.ticks_sin_avance = 0
 
         # Warehouse nuevo: stocks, racks y pedidos vuelven al estado del escenario.
         self.warehouse = cargar_warehouse(self.datos)
@@ -238,6 +243,7 @@ class Simulacion:
             return self.estado()
 
         self.tick += 1
+        self.hubo_avance = False  # NUEVO
 
         # El orden de movimiento es determinista.
         for picker in sorted(self.pickers, key=_id_picker):
@@ -247,12 +253,34 @@ class Simulacion:
             self._avanzar(picker)
 
         self._actualizar_pedidos()
+        self._detectar_bloqueo()  # NUEVO
 
         if all(p.estado in ("terminado", "bloqueado") for p in self.pickers):
             self.terminada = True
             self._registrar("Simulación finalizada.")
 
         return self.estado()
+
+    def _detectar_bloqueo(self):
+        """Si pasan LIMITE_BLOQUEO ticks sin avance, los pickers que siguen
+        en juego pasan a 'bloqueado' para que la simulación pueda terminar."""
+
+        if self.hubo_avance:
+            self.ticks_sin_avance = 0
+            return
+
+        self.ticks_sin_avance += 1
+
+        if self.ticks_sin_avance < LIMITE_BLOQUEO:
+            return
+
+        for picker in self.pickers:
+            if picker.estado != "terminado":
+                picker.estado = "bloqueado"
+                self._registrar(
+                    f"{picker.id}: bloqueado, sin avance durante "
+                    f"{LIMITE_BLOQUEO} ticks."
+                )
 
     def ejecutar(self, max_ticks=10000):
         """Ejecuta hasta terminar o alcanzar el límite de ticks."""
@@ -270,11 +298,12 @@ class Simulacion:
 
 
     def _ocupadas(self, picker):
-        """Celdas ocupadas por los demás pickers."""
+        """Celdas ocupadas por los demás pickers que siguen en juego.
+        Un picker terminado (ya entregó en despacho) no bloquea celdas."""
 
         ocupadas = set()
         for otro in self.pickers:
-            if otro is not picker:
+            if otro is not picker and otro.estado != "terminado":  # CAMBIO
                 ocupadas.add(otro.pos)
         return ocupadas
 
@@ -368,6 +397,7 @@ class Simulacion:
             picker.objetivo = None
             picker.destinos = set()
             picker.estado = "disponible"
+            self.hubo_avance = True  # NUEVO
             return
 
         for linea in tarea["lineas"]:
@@ -383,6 +413,7 @@ class Simulacion:
         picker.objetivo = None
         picker.destinos = set()
         picker.estado = "disponible"
+        self.hubo_avance = True  # NUEVO
 
         self._registrar(
             f"{picker.id}: recogió {cantidad} unidades de {producto.id}."
@@ -396,6 +427,7 @@ class Simulacion:
 
         if picker.pos in self.nav.despacho:
             picker.estado = "terminado"
+            self.hubo_avance = True  # NUEVO
             self._registrar(f"{picker.id}: llegó a despacho.")
             return
 
@@ -415,6 +447,7 @@ class Simulacion:
 
         if not picker.ruta and picker.pos in self.nav.despacho:
             picker.estado = "terminado"
+            self.hubo_avance = True  # NUEVO
 
 
     def _mover(self, picker):
@@ -447,6 +480,7 @@ class Simulacion:
         picker.pos = siguiente
         picker.trail.append(siguiente)
         picker.ruta.pop(0)
+        self.hubo_avance = True  # NUEVO
 
         self._registrar(f"{picker.id}: {anterior} -> {siguiente}.")
 

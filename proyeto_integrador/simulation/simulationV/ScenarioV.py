@@ -1,7 +1,7 @@
 import random
 
-from simulation.simulationV.NavegationV import Navegacion
-from CargadorV import cargar_warehouse
+from .NavegationV import Navegacion
+from .CargadorV import cargar_warehouse
 
 ANCHO_PASILLO = 2
 NIVELES = 3 #Esto se puede cambiar 
@@ -133,26 +133,37 @@ def _crear_despacho(warehouse, ancho_x):
             "tipo": tipo,
             "ubicacion": {"x": x_zona + ancho_zona // 2, "y": 0},
         })
+        # La zona arranca en y=0 para contener a la puerta y termina en y=2,
+        # así las celdas de pasillo en y=3 siguen siendo adyacentes a ella.
         warehouse["zonas_despacho"].append({
             "id": f"ZONA_{nombre}",
             "puerta_id": id_puerta,
-            "ubicacion": {"x": x_zona, "y": 1},
+            "ubicacion": {"x": x_zona, "y": 0},
             "ancho": ancho_zona,
-            "alto": 2,
+            "alto": 3,
             "peso_max_kg": 500.0,
         })
 
 
 def _crear_pickers(cantidad, ancho_x, azar):
-    separacion = max(1, (ancho_x - 2) // cantidad)
+    # El pasillo inicial son las filas y=3 e y=4: ahí caben 2 * (ancho_x - 2) pickers.
+    columnas = ancho_x - 2
+    if cantidad > 2 * columnas:
+        raise ValueError(
+            f"El almacén solo tiene lugar para {2 * columnas} pickers en el pasillo inicial."
+        )
+    en_fila_3 = min(cantidad, columnas)
     lista = []
-    usadas = set()
     for i in range(cantidad):
-        x = min(1 + i * separacion, ancho_x - 1)
-        y = 3
-        while (x, y) in usadas:
-            y += 1
-        usadas.add((x, y))
+        if i < en_fila_3:
+            y = 3
+            indice = i
+            total = en_fila_3
+        else:
+            y = 4
+            indice = i - en_fila_3
+            total = cantidad - en_fila_3
+        x = 1 + indice * (columnas // total)
         lista.append({
             "id": f"PK_{i + 1:02d}",
             "posicion_inicial": {"x": x, "y": y},

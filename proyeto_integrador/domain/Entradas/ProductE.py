@@ -1,4 +1,4 @@
-from validation import (
+from domain.validation import (
     validate_coordinates,
     validate_non_negative_int,
     validate_positive_int,

@@ -21,6 +21,7 @@ class GrafoFiltrado:
 
 
 class Navegacion:
+    
     def __init__(self, warehouse):
         self.ancho_x = warehouse.ancho_x
         self.largo_y = warehouse.largo_y
