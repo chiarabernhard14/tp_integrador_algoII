@@ -1,7 +1,5 @@
 class Wave:
-    """
-    Representa el conjunto agrupado de pedidos pendientes que se procesarán y prepararán en un mismo recorrido.
-    """
+
 
     def __init__(self, id="", orders=None, max_orders_capacity=0, max_products_capacity=0,
                  locations_to_visit=None, route=None, status="CREADA"):

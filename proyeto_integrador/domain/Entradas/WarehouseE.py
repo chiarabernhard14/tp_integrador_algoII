@@ -272,6 +272,13 @@ class Warehouse:
         if element.ubicacion[1] + element.alto > self._largo_y:
             raise ValueError("El elemento excede el largo del almacén.")
 
+    def _zones_perimeter(self, zones):
+        
+        cells = set()
+        for zone in zones.values():
+            cells |= set(zone.perimeter_cells())
+        return cells
+
     def _cells_of(self, element):
         return set(element.cells())
 
@@ -284,12 +291,13 @@ class Warehouse:
     
     def build_graph_by_cell(self):
         aisle_cells = self._occupied_by(self._pasillos)
+        zones_perimeter_cells = self._zones_perimeter(self._zonas_despacho)
         for a in self._pasillos.values():
             vertices = a.cells()
 
             for v in vertices:
                 x, y = v
-                if a.sentido != "N" and (x, y - 1) in aisle_cells:  # ir al S
+                if a.sentido != "N" and (x, y - 1) in aisle_cells :  # ir al S
                     self._agregar_arista((x, y), (x, y - 1), 1)
 
                 if a.sentido != "S" and (x, y + 1) in aisle_cells:  # ir al N

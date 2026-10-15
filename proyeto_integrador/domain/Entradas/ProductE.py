@@ -13,7 +13,7 @@ class Product:
         nombre,
         rack_id,
         ubicacion,
-        acc_por,
+        acc_por=(0,0),
         stock=0,
         peso_kg=1.0
     ):  
