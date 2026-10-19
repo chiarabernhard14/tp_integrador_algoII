@@ -1,10 +1,9 @@
-
+from tkinter import filedialog
 import math
 import sys
 import argparse
 import ctypes
 import tkinter as tk
-from tkinter import filedialog, simpledialog
 
 try:
     ctypes.windll.user32.SetProcessDPIAware()
@@ -22,7 +21,9 @@ root_path = os.path.abspath(os.path.join(current_dir, ".."))
 if root_path not in sys.path:
     sys.path.append(root_path)
 
-from simulation.simulationV.SimutionV import Simulacion
+RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, RAIZ)
+
 
 from simulation.simulationV.SimutionV import Simulacion
 from simulation.simulationV.ScenarioV import generar_escenario
@@ -32,7 +33,10 @@ from simulation.simulationV.PersistenceV import (
     guardar_partida,
     cargar_partida,
 )
-
+from simulation.simulationV.RecomendadorV import recomendar_pickers
+from real.Formulario import pedir_parametros_generacion
+from visualization.real.Panel_recomendaciónV import PanelRecomendacion
+from visualization.real.Alerta import Alerta
 
 ANCHO = 1280
 ALTO = 780
@@ -44,7 +48,7 @@ AREA_Y = 96
 AREA_W = 800
 AREA_H = 620
 
-TICK_SEG = 0.30   # segundos que dura un tick a velocidad x1
+TICK_SEG = 0.30   
 VELOCIDADES = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
 
 MAX_TARJETAS = 5
@@ -207,7 +211,12 @@ class App:
         self.f_mini = pygame.font.SysFont(nombres, 11, bold=True)
 
         self.alerta = Alerta(self.f_negrita, self.f_normal)
-
+        self.f_alerta_titulo = pygame.font.SysFont(nombres, 24, bold=True)
+        self.f_alerta_texto = pygame.font.SysFont(nombres, 19)
+        self.alerta = Alerta(self.f_alerta_titulo, self.f_alerta_texto)
+        
+        self.panel = PanelRecomendacion(self.f_sub, self.f_normal, self.f_chico, self.f_mini)
+        
         self.vel_idx = 2
         self.t_anim = 0.0
 
@@ -276,6 +285,7 @@ class App:
         self.botones.append(Boton("continuar", "Continuar", 1036, 72, 76, 34))
         self.botones.append(Boton("reiniciar", "Reiniciar", 1118, 72, 70, 34))
         self.botones.append(Boton("paso", "Paso", 1194, 72, 52, 34))
+        self.botones.append(Boton("recomendar", "Recomendar", 1000, 116, 150, 30))
         # Velocidad
         self.botones.append(Boton("vel_menos", "-", 1160, 118, 36, 26))
         self.botones.append(Boton("vel_mas", "+", 1204, 118, 36, 26))
@@ -323,6 +333,11 @@ class App:
             self.vel_idx = max(0, self.vel_idx - 1)
         elif nombre == "vel_mas":
             self.vel_idx = min(len(VELOCIDADES) - 1, self.vel_idx + 1)
+        elif nombre == "recomendar":
+            self._recomendar()
+        elif nombre == "usar_recomendado":
+            self._usar_recomendado()
+            self.panel.cerrar()
 
     # ---------- escenarios y partidas ----------
 
@@ -345,39 +360,12 @@ class App:
         root.destroy()
         return ruta
 
-    def _dialogo_numero(self, texto, inicial):
-        root = tk.Tk()
-        root.attributes("-topmost", True)
-        root.withdraw()
-        valor = simpledialog.askinteger("Generador", texto, initialvalue=inicial, parent=root)
-        root.destroy()
-        return valor
-
     def _generar(self):
         self.corriendo = False
-        estantes = self._dialogo_numero("Cantidad de estantes:", 6)
-        if estantes is None:
+        valores = pedir_parametros_generacion()
+        if valores is None:
             return
-        pasillos = self._dialogo_numero("Pasillos horizontales:", 2)
-        if pasillos is None:
-            return
-        productos = self._dialogo_numero("Cantidad de productos:", 20)
-        if productos is None:
-            return
-        pedidos = self._dialogo_numero("Cantidad de pedidos:", 8)
-        if pedidos is None:
-            return
-        pickers = self._dialogo_numero("Cantidad de pickers:", 2)
-        if pickers is None:
-            return
-
-        datos = generar_escenario(
-            estantes=estantes,
-            pasillos_horizontales=pasillos,
-            productos=productos,
-            pedidos=pedidos,
-            pickers=pickers,
-        )
+        datos = generar_escenario(**valores)
         self._usar_simulacion(Simulacion(datos))
 
     def _cargar_escenario(self):
@@ -416,6 +404,19 @@ class App:
             return
         guardar_partida(ruta, self.sim)
         self.alerta.mostrar("Listo", f"Partida guardada en {ruta}")
+
+    def _recomendar(self):                 
+        self.corriendo = False
+        self._dibujar()
+        self._rect_alfa(440, 340, 400, 80, (10, 14, 24, 230), 14)
+        self._texto("Calculando recomendacion...", self.f_sub, TEXTO, 640, 380, "cc")
+        pygame.display.flip()
+        self.panel.mostrar(recomendar_pickers(self.sim.datos, self.sim.waves_entrada))
+
+    def _usar_recomendado(self):            
+        nuevos = dict(self.sim.datos)
+        nuevos["pickers"] = list(self.panel.pickers_recomendados)
+        self._usar_simulacion(Simulacion(nuevos, self.sim.waves_entrada))
 
     # ---------- avance de la simulación ----------
 
@@ -549,15 +550,25 @@ class App:
 
     # ---------- dibujo del warehouse ----------
 
+    def _dibujar_base(self):
+        rect = self._rect_celdas(0, 0, self.ancho_celdas, self.alto_celdas)
+        pygame.draw.rect(self.pantalla, (66, 72, 84), rect)
+
+    def _dibujar_perimetro(self):
+        rect = self._rect_celdas(0, 0, self.ancho_celdas, self.alto_celdas)
+        pygame.draw.rect(self.pantalla, TEXTO, rect.inflate(2, 2), 2)
+
     def _dibujar(self):
         self.pantalla.fill(BG)
         pygame.draw.rect(self.pantalla, SUELO, (20, 20, 840, 740), border_radius=18)
         pygame.draw.rect(self.pantalla, BORDE_SUELO, (20, 20, 840, 740), 2, border_radius=18)
 
         self._dibujar_encabezado()
+        self._dibujar_base()  
         self._dibujar_pasillos()
         self._dibujar_despacho()
         self._dibujar_racks()
+        self._dibujar_perimetro() 
         self._dibujar_productos()
         self._dibujar_recorridos()
         self._dibujar_objetivos()
@@ -565,6 +576,7 @@ class App:
         self._dibujar_leyenda()
         self._dibujar_panel()
         self._dibujar_tooltip()
+        self.panel.dibujar(self.pantalla)
         self.alerta.dibujar(self.pantalla)
 
         pygame.display.flip()
@@ -847,6 +859,16 @@ class App:
     # ---------- bucle principal ----------
 
     def _teclado(self, tecla):
+        if tecla == pygame.K_ESCAPE:
+            if self.alerta.visible():
+                self.alerta.cerrar()
+            else:
+                self.panel.cerrar()
+            return
+
+        if self.panel.visible():
+            return
+        
         if tecla == pygame.K_SPACE:
             if self.corriendo:
                 self._click("pausar")
@@ -860,7 +882,9 @@ class App:
             self._click("vel_mas")
         elif tecla in (pygame.K_MINUS, pygame.K_KP_MINUS):
             self._click("vel_menos")
-
+        elif tecla == pygame.K_ESCAPE:
+            self.panel.cerrar()
+            
     def correr(self):
         activo = True
         while activo:
@@ -874,7 +898,11 @@ class App:
                     self._teclado(ev.key)
                 elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                     if self.alerta.visible() and self.alerta.rect.collidepoint(ev.pos):
-                        self.alerta.cerrar()
+                        self.alerta.clic(ev.pos)
+                        continue
+                    if self.panel.visible():
+                        if self.panel.clic(ev.pos) == "usar":
+                            self._click("usar_recomendado")
                         continue
                     for boton in self.botones:
                         if boton.rect.collidepoint(ev.pos):
