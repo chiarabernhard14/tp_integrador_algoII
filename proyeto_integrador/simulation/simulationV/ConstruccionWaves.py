@@ -7,14 +7,10 @@ def _construir_waves_intermedias(
     accesible_desde_un_origen, existe_secuencia_factible,
 ):
     """Agrupa tareas por prioridad y cercanía respetando límites y factibilidad."""
-    # Las tareas pueden dividirse entre waves si lo exigen los límites.
-
     capacidad_maxima = max(p["capacidad_carga_kg"] for p in pickers)
     capacidad_total_pickers = sum(p["capacidad_carga_kg"] for p in pickers)
-    # El escenario representa un depósito real: todo producto existente con
-    # stock reservado debe tener un acceso y un recorrido válido de ida y vuelta.
-    # Si no se cumple, es un error de los datos/grafo, no una cantidad pendiente
-    # por falta de stock. No descartamos silenciosamente el producto.
+    # Todo producto existente con stock reservado debe tener un acceso y un recorrido válido de ida y vuelta.
+    # Si no se cumple, es un error de los datos/grafo, no una cantidad pendiente por falta de stock.
     productos_validados = set()
     for tarea in tareas:
         pid = tarea["producto_id"]
@@ -23,7 +19,7 @@ def _construir_waves_intermedias(
                 raise ValueError(
                     f"El producto {pid} tiene stock disponible pero no existe un recorrido "
                     "válido desde una posición de inicio hasta el producto y de regreso al despacho. "
-                    "Revisá la conectividad del grafo y los accesos de la ubicación."
+                    "Revisar la conectividad del grafo y los accesos de la ubicación."
                 )
             productos_validados.add(pid)
         if productos[pid]["peso_kg"] > capacidad_maxima + 1e-9:
@@ -76,10 +72,7 @@ def _construir_waves_intermedias(
                                 default=float("inf"))
                     else:
                         d = distancia_productos(wave["ultimo_producto"], pid)
-                        # Si no hay camino desde el último producto, usamos
-                        # la cercanía a cualquiera de los productos ya incluidos
-                        # solo como criterio de orden; la factibilidad se decide
-                        # comprobando una secuencia completa, no ese par aislado.
+                        # Si no hay camino desde el último producto, usamos la cercanía a cualquiera de los productos ya incluidos
                         if d == float("inf"):
                             d = min((distancia_productos(actual, pid)
                                      for actual in productos_actuales),
@@ -113,8 +106,7 @@ def _construir_waves_intermedias(
                         break
                     continue
 
-                # Vecino más cercano global: comparar todos los productos
-                # admisibles de la prioridad actual, sin preferir un pedido.
+                # Vecino más cercano global: comparar todos los productos admisibles de la prioridad actual, sin preferir un pedido.
                 opciones = candidatos()
                 if not opciones:
                     break

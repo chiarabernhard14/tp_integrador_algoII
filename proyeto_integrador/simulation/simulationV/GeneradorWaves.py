@@ -96,10 +96,8 @@ def _preparar_tareas(pedidos, productos):
 
 
 def generar_waves(datos):
-    """Genera waves deterministas mediante vecino más cercano global.
-
-    Valida y prepara los datos, construye las waves por prioridad y asigna
-    los productos a los pickers. No modifica los pedidos ni el stock original.
+    """Genera waves mediante vecino más cercano global.
+    
     """
     config = datos.get("configuracion", {})
     pedidos = list(datos["pedidos"])
@@ -152,9 +150,7 @@ def generar_waves(datos):
 
 def generar_plan_waves(datos):
     """Devuelve las waves, cantidades pendientes y un resumen de planificación.
-
-    ``datos["pedidos"]`` debe contener objetos ``Order``. Los pedidos originales
-    se consultan directamente y no se modifican durante la planificación.
+    
     """
     pedidos = list(datos["pedidos"])
     if any(not isinstance(pedido, Order) for pedido in pedidos):

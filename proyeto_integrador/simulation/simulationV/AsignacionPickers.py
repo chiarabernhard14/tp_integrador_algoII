@@ -8,9 +8,6 @@ def _asignar_pickers_a_waves(
     objetos_pedido_por_id, distancia, accesos, despacho, calcular_recorrido,
 ):
     """Distribuye los productos entre pickers y construye los objetos Wave."""
-    # Distribuir la carga de cada wave entre uno o varios pickers. Cada picker
-    # respeta su capacidad individual; se prioriza el picker alcanzable más
-    # cercano al producto y se divide una cantidad entre pickers si hace falta.
     usados_alguna_vez = set()
     usados_por_prioridad = defaultdict(set)
     resultado = []

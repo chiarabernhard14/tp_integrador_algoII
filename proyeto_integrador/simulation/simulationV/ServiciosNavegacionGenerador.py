@@ -35,9 +35,7 @@ def _crear_servicios_navegacion(navegacion, productos, tareas, pickers, despacho
     ]
 
     def accesible_desde_un_origen(pid):
-        # El recorrido debe poder llegar al producto desde despacho o desde
-        # una posición inicial válida y, además, regresar desde su acceso al
-        # despacho por el grafo dirigido.
+        # El recorrido debe poder llegar al producto desde despacho o desde una posición inicial válida y, además, regresar desde su acceso al despacho por el grafo dirigido.
         origenes = despacho + posiciones_iniciales
         return bool(accesos.get(pid)) and any(
             distancia(origen, acceso) < float("inf")
@@ -45,11 +43,7 @@ def _crear_servicios_navegacion(navegacion, productos, tareas, pickers, despacho
             for origen in origenes for acceso in accesos[pid]
         )
 
-    # Comprueba si existe ALGÚN orden de visita válido para los productos de
-    # la wave. No basta con mirar solo el último producto agregado: en un grafo
-    # dirigido puede ser necesario visitar primero un producto distinto.
-    # La búsqueda es determinista y memoriza estados (productos visitados,
-    # acceso actual) para evitar explorar repetidamente los mismos subproblemas.
+    # Comprueba si existe algún orden de visita válido para los productos de la wave.
     cache_factibilidad = {}
     def existe_secuencia_factible(ids_productos):
         ids = tuple(sorted(set(ids_productos), key=str))
@@ -66,8 +60,7 @@ def _crear_servicios_navegacion(navegacion, productos, tareas, pickers, despacho
                 return False
             memo.add(estado)
             if len(visitados) == len(ids):
-                # La ruta solo es válida si desde el último acceso existe
-                # un camino dirigido hasta alguna celda del despacho.
+                # La ruta solo es válida si desde el último acceso existe un camino dirigido hasta alguna celda del despacho.
                 return any(distancia(acceso_actual, d) < float("inf") for d in despacho)
             for pid in ids:
                 if pid in visitados:
@@ -84,10 +77,7 @@ def _crear_servicios_navegacion(navegacion, productos, tareas, pickers, despacho
 
     def calcular_recorrido(productos_asignados, origenes):
         """Encuentra un recorrido dirigido que visite los productos y termine en despacho.
-
-        Devuelve (ruta, distancia). Se consideran todas las celdas de acceso
-        de cada producto y todas las celdas de despacho, para no elegir un
-        acceso que impida el regreso.
+        
         """
         ids = tuple(sorted(set(productos_asignados), key=str))
         if not ids:
