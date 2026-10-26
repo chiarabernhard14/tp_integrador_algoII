@@ -1,7 +1,9 @@
-from domain.pathFinding import PathFinder
+#from domain.pathFinding import PathFinder
+from domain.RecorridosV import PathFinderV
 
 AVANCE = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "O": (-1, 0)}
 DIRECCIONES = ((0, 1), (0, -1), (1, 0), (-1, 0))
+
 
 
 class GrafoFiltrado:
@@ -11,67 +13,101 @@ class GrafoFiltrado:
 
     def get(self, nodo, defecto=None):
         lista = self.base.get(nodo)
+
         if lista is None:
             return defecto
-        resultado = []
-        for vecino, peso in lista:
-            if vecino not in self.ocupadas:
-                resultado.append((vecino, peso))
-        return resultado
+
+        return [
+            (vecino, peso)
+            for vecino, peso in lista
+            if vecino not in self.ocupadas
+        ]
+
+    def __getitem__(self, nodo):
+        if nodo not in self.base:
+            raise KeyError(nodo)
+
+        return self.get(nodo, [])
+
 
 
 class Navegacion:
-    
+
     def __init__(self, warehouse):
         self.ancho_x = warehouse.ancho_x
         self.largo_y = warehouse.largo_y
         self.busquedas = 0
 
+        # Reutilizar el grafo construido por Warehouse.
+        if not warehouse.graph:
+            warehouse.build_graph_by_cell()
+
+        if not isinstance(warehouse.graph, dict):
+            raise TypeError(
+                "Navegacion necesita un grafo en formato diccionario."
+            )
+
+        self.grafo = warehouse.graph
+
+        # Mantener las celdas de los elementos físicos.
         self.bloqueadas = set()
         self.zonas = set()
-        for rack in warehouse.racks.values():
-            self.bloqueadas |= set(rack.cells())
-        for zona in warehouse.zonas_despacho.values():
-            self.zonas |= set(zona.cells())
-        self.bloqueadas |= self.zonas
-        for puerta in warehouse.puertas.values():
-            self.bloqueadas.add((puerta.ubicacion[0], puerta.ubicacion[1]))
 
+        for rack in warehouse.racks.values():
+            self.bloqueadas.update(rack.cells())
+
+        for zona in warehouse.zonas_despacho.values():
+            self.zonas.update(zona.cells())
+
+        self.bloqueadas.update(self.zonas)
+
+        for puerta in warehouse.puertas.values():
+            self.bloqueadas.add(tuple(puerta.ubicacion))
+
+        # Información auxiliar para reconocer pasillos e intersecciones.
         self.sentido = {}
         self.eje = {}
+
         for pasillo in warehouse.pasillos.values():
             eje = self._eje_de(pasillo)
+
             for celda in pasillo.cells():
                 self.sentido[celda] = (pasillo.sentido, pasillo.id)
                 self.eje[celda] = eje
 
-        self.vecinos = {}
-        self.grafo = {}
-        for x in range(self.ancho_x):
-            for y in range(self.largo_y):
-                if (x, y) not in self.bloqueadas:
-                    self.vecinos[(x, y)] = self._calcular_vecinos((x, y))
-        for celda, lista in self.vecinos.items():
-            self.grafo[celda] = [(vecino, 1) for vecino in lista]
+        # Obtener los vecinos del grafo existente, sin recalcularlos.
+        self.vecinos = {
+            celda: [vecino for vecino, _ in lista]
+            for celda, lista in self.grafo.items()
+        }
 
+        # Celdas de circulación desde las que se llega al despacho.
         self.despacho = set()
-        for celda in self.vecinos:
+
+        for celda in self.grafo:
             if self._adyacentes(celda) & self.zonas:
                 self.despacho.add(celda)
 
+        # Accesos a racks.
         self.acceso_rack = {}
+
         for rack in warehouse.racks.values():
             self._registrar_accesos(rack)
 
+        # Conservar el grafo auxiliar con nodos de productos.
         self.pilas = set()
-        self.grafo_rutas = dict(self.grafo)
+        self.grafo_rutas = {
+            celda: list(lista)
+            for celda, lista in self.grafo.items()
+        }
+
         for producto in warehouse.productos.values():
-            celda = (producto.ubicacion[0], producto.ubicacion[1])
+            celda = tuple(producto.ubicacion)
+
             if celda not in self.pilas and self.acceso_rack.get(celda):
                 self._agregar_pila(celda)
 
         self.intersecciones = self._calcular_intersecciones()
-
 
     def _eje_de(self, pasillo):
         if pasillo.sentido in ("N", "S"):
@@ -90,33 +126,6 @@ class Navegacion:
             resultado.add((celda[0] + dx, celda[1] + dy))
         return resultado
 
-    def _calcular_vecinos(self, celda):
-        lista = []
-        for dx, dy in DIRECCIONES:
-            destino = (celda[0] + dx, celda[1] + dy)
-            if destino not in self.bloqueadas and self._en_limites(destino):
-                if self._permite(celda, destino, (dx, dy)):
-                    lista.append(destino)
-        return lista
-
-    def _en_limites(self, celda):
-        return 0 <= celda[0] < self.ancho_x and 0 <= celda[1] < self.largo_y
-
-    def _permite(self, origen, destino, direccion):
-        return (self._permite_en(origen, destino, direccion)
-                and self._permite_en(destino, origen, direccion))
-
-    def _permite_en(self, celda, otra, direccion):
-        info = self.sentido.get(celda)
-        if info is None or info[0] == "AMBOS":
-            return True
-        avance = AVANCE[info[0]]
-        if direccion == avance:
-            return True
-        producto_punto = direccion[0] * avance[0] + direccion[1] * avance[1]
-        info_otra = self.sentido.get(otra)
-        mismo_pasillo = info_otra is not None and info_otra[1] == info[1]
-        return producto_punto == 0 and mismo_pasillo
 
     def _registrar_accesos(self, rack):
         x0 = rack.ubicacion[0]
@@ -158,26 +167,67 @@ class Navegacion:
 
     def accesos(self, x, y):
         return self.acceso_rack.get((x, y), set())
+    
 
-    def camino(self, origen, destinos, ocupadas=()):
+    def camino(self, origen, destinos, ocupadas=(), algoritmo="astar"):
+        if algoritmo == "astar":
+            buscador = PathFinderV.a_estrella
+        elif algoritmo == "dijkstra":
+            buscador = PathFinderV.dijkstra
+        else:
+            raise ValueError(
+                "Algoritmo no válido. Usá 'astar' o 'dijkstra'."
+            )
+
+        if origen not in self.grafo:
+            return None
+
+        destinos = set(destinos)
+        ocupadas = set(ocupadas)
+
         if origen in destinos:
             return []
-        grafo = self.grafo
+
+        destinos_validos = destinos.intersection(self.grafo.keys())
+        destinos_validos -= ocupadas
+
+        if not destinos_validos:
+            return None
+
+        grafo_busqueda = self.grafo
+
         if ocupadas:
-            grafo = GrafoFiltrado(self.grafo, ocupadas)
-        ordenados = []
-        for destino in destinos:
-            if destino in self.grafo and destino not in ocupadas:
-                ordenados.append((PathFinder.manhattan_distance(origen, destino), destino))
-        ordenados.sort()
+            grafo_busqueda = GrafoFiltrado(self.grafo, ocupadas)
+
+        ordenados = sorted(
+            (
+                PathFinderV.manhattan(origen, destino),
+                destino
+            )
+            for destino in destinos_validos
+        )
+
         mejor_costo = float("inf")
         mejor_ruta = None
-        for cota, destino in ordenados:
-            if cota >= mejor_costo:
+
+        for distancia_minima, destino in ordenados:
+            if distancia_minima >= mejor_costo:
                 break
+
             self.busquedas += 1
-            costo, ruta = PathFinder.aEstrella(grafo, origen, destino)
+
+            costo, ruta, expandidos = buscador(
+                grafo_busqueda,
+                origen,
+                destino
+            )
+
+            if not ruta or costo == float("inf"):
+                continue
+
             if costo < mejor_costo:
                 mejor_costo = costo
                 mejor_ruta = ruta[1:]
+
         return mejor_ruta
+

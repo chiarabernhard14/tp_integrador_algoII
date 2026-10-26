@@ -257,6 +257,10 @@ def _crear_pedidos(productos, cantidad, max_items, azar):
         })
     return pedidos
 
+def generar_pedidos(productos, cantidad=8, max_productos_pedido=4):
+    """Pedidos al azar sobre una lista de productos (la usa el editor de mapa)."""
+    return _crear_pedidos(productos, cantidad, max_productos_pedido, random.Random())
+
 def _verificar_alcanzables(warehouse):
     nav = Navegacion(warehouse)
     if not nav.despacho:

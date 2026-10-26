@@ -13,7 +13,7 @@ except AttributeError:
 import pygame
 from pygame import gfxdraw
 
-# Ajustá estos nombres de módulo a los de tu proyecto.
+
 import sys
 import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -222,19 +222,13 @@ class App:
 
         self.botones = []
         self._crear_botones()
+        self.editor = None
 
         self.sim = None
         self._usar_simulacion(Simulacion(datos))
 
     # ---------- carga de simulaciones ----------
 
-    def _usar_simulacion(self, sim):
-        self.sim = sim
-        self.capacidades = {}
-        for picker in self.sim.pickers:
-            self.capacidades[picker.id] = picker.capacidad
-        self._preparar_mapa()
-        self._reiniciar_vista()
 
     def _preparar_mapa(self):
         almacen = self.sim.warehouse
@@ -260,21 +254,6 @@ class App:
         self.sim.reiniciar()
         self._reiniciar_vista()
 
-    def _armar_pilas(self):
-        self.pilas = {}
-        for producto in self.sim.productos.values():
-            celda = (producto.ubicacion[0], producto.ubicacion[1])
-            self.pilas.setdefault(celda, []).append(producto)
-
-    def _refrescar_estado(self):
-        self.estado = self.sim.estado()
-        self.pendientes_ids = set()
-        self.recogidos_ids = set()
-        for p in self.estado["pickers"]:
-            self.pendientes_ids.update(p["pendientes"])
-            for recogido in p["recogidos"]:
-                self.recogidos_ids.add(recogido["producto_id"])
-
     # ---------- botones ----------
 
     def _crear_botones(self):
@@ -286,6 +265,7 @@ class App:
         self.botones.append(Boton("reiniciar", "Reiniciar", 1118, 72, 70, 34))
         self.botones.append(Boton("paso", "Paso", 1194, 72, 52, 34))
         self.botones.append(Boton("recomendar", "Recomendar", 1000, 116, 150, 30))
+        self.botones.append(Boton("editar", "Editar", 1000, 116, 150, 30))
         # Velocidad
         self.botones.append(Boton("vel_menos", "-", 1160, 118, 36, 26))
         self.botones.append(Boton("vel_mas", "+", 1204, 118, 36, 26))
@@ -338,6 +318,8 @@ class App:
         elif nombre == "usar_recomendado":
             self._usar_recomendado()
             self.panel.cerrar()
+        elif nombre == "editar":
+            self.editor = EditorEscenario(self.ancho_celdas, self.alto_celdas, pygame.Rect(AREA_X, AREA_Y, AREA_W, AREA_H))
 
     # ---------- escenarios y partidas ----------
 
@@ -385,17 +367,12 @@ class App:
         self.alerta.mostrar("Listo", f"Escenario guardado en {ruta}")
 
     def _cargar_partida(self):
-        self.corriendo = False
+        self.sesion.pausar()
         ruta = self._dialogo_abrir("Cargar partida")
         if not ruta:
             return
-        datos, estado = cargar_partida(ruta)
-        sim = Simulacion(datos)
-        try:
-            sim.restaurar(estado)
-        except (KeyError, IndexError) as error:
-            raise ValueError(f"La partida está dañada y no se pudo restaurar: {error}") from error
-        self._usar_simulacion(sim)
+        self.sesion.cargar_partida(ruta)
+        self._actualizar_vista()
 
     def _guardar_partida(self):
         self.corriendo = False
@@ -413,25 +390,8 @@ class App:
         pygame.display.flip()
         self.panel.mostrar(recomendar_pickers(self.sim.datos, self.sim.waves_entrada))
 
-    def _usar_recomendado(self):            
-        nuevos = dict(self.sim.datos)
-        nuevos["pickers"] = list(self.panel.pickers_recomendados)
-        self._usar_simulacion(Simulacion(nuevos, self.sim.waves_entrada))
 
     # ---------- avance de la simulación ----------
-
-    def _dar_paso(self):
-        self.prev = {}
-        for p in self.estado["pickers"]:
-            self.prev[p["id"]] = p["posicion"]
-        self.sim.paso()
-        self._refrescar_estado()
-        self.progreso = 0.0
-        self.paso_pendiente = False
-        if self.sim.terminada:
-            self.corriendo = False
-            self._avisar_fin()
-
     def _avisar_fin(self):
         bloqueados = []
         for p in self.estado["pickers"]:

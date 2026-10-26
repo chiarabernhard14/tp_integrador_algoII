@@ -54,7 +54,7 @@ class RouteFinder:
         for order in wave.orders:
             for item in order.items:
                 if(item.product and item.product.location):
-                    pendientes.append(item.product.location)
+                    pendientes.add(item.product.location)
 
         currentNode = startNode
         fullRoute = [currentNode]

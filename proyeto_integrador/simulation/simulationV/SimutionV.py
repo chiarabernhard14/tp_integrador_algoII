@@ -2,10 +2,9 @@ from .NavegationV import Navegacion
 from .CargadorV import cargar_warehouse
 from .WavesV import armar_waves, peso_pedido
 
-# Ticks seguidos sin que ningún picker avance antes de declarar bloqueo.
 LIMITE_BLOQUEO = 20
 
-
+#Mandar a generación de waves
 def _clave_tarea(tarea):
     return (-tarea["prioridad"], tarea["producto_id"])
 
@@ -13,10 +12,8 @@ def _clave_tarea(tarea):
 def _id_picker(picker):
     return picker.id
 
-
+#Mandar a generación de waves
 def _clave_cola(wave):
-    """Orden de la cola de waves: primero la más larga (más productos a visitar),
-    después la más pesada y por último el id. Así ninguna wave larga queda al final."""
     return (-len(wave["tareas"]), -wave["peso"], wave["id"])
 
 
@@ -107,7 +104,7 @@ class Simulacion:
 
         self._registrar("Simulación inicializada.")
 
-
+#todavía estoy solucionando la implementacion de los distintods recorridos 
     # ---------- armado de waves ----------
 
     def _armar_waves(self):
