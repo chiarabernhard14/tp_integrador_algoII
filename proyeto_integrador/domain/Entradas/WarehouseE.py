@@ -1,4 +1,3 @@
-import graphlib
 from domain.validation import validate_positive_int
 from .DoorE import Door
 from .DispatchZoneE import DispatchZone
@@ -112,8 +111,11 @@ class Warehouse:
         except KeyError:
             raise ValueError("La zona de despacho referencia una puerta que no existe en el warehouse.")
 
-        if not(zone.contains(door.ubicacion)):
-            raise ValueError("La zona de despacho no contiene a la puerta asignada.")
+        # La puerta debe ser adyacente a la zona (vecina, no estar dentro de ella)
+        if door.ubicacion not in self._adjacent_cells_of(zone):
+            raise ValueError(
+                "La puerta asignada debe estar en una celda adyacente a la zona de despacho."
+            )
 
         cells = set(zone.cells())
         if cells & self._occupied_by(self._racks):
@@ -153,7 +155,36 @@ class Warehouse:
         if cells & self._occupied_by(self._pasillos):
             raise ValueError("El rack se superpone con un pasillo.")
 
+        # Las caras de acceso del rack no pueden quedar fuera del warehouse
+        # (el rack no puede estar pegado a una pared)
+        x0, y0 = rack.ubicacion
+        if rack.ancho == 2:
+            if x0 - 1 < 0:
+                raise ValueError(f"El rack '{rack.id}' está pegado a la pared izquierda del almacén.")
+            if x0 + 2 >= self._ancho_x:
+                raise ValueError(f"El rack '{rack.id}' está pegado a la pared derecha del almacén.")
+        else:  # rack.alto == 2
+            if y0 - 1 < 0:
+                raise ValueError(f"El rack '{rack.id}' está pegado a la pared inferior del almacén.")
+            if y0 + 2 >= self._largo_y:
+                raise ValueError(f"El rack '{rack.id}' está pegado a la pared superior del almacén.")
+
+        # Las celdas de acceso al rack (adyacentes a las caras que contienen productos)
+        # no deben estar ocupadas por ningún otro elemento
+        occupied = (
+            self._occupied_by(self._racks)
+            | self._occupied_by(self._zonas_despacho)
+            | self._occupied_by(self._pasillos)
+        )
+        blocked = self._rack_access_cells(rack) & occupied
+        if blocked:
+            raise ValueError(
+                f"Las celdas de acceso al rack '{rack.id}' están bloqueadas "
+                f"por otro elemento: {blocked}."
+            )
+
         self._racks[rack.id] = rack
+
 
     # Pasillos
     @property
@@ -223,10 +254,11 @@ class Warehouse:
         
         try:
             rack = self._racks[product.rack_id]
+            rack.add_product(product)
         except KeyError:
             raise ValueError("El producto no referencia un rack que exista en el warehouse.")
-        
-        rack.add_product
+
+        self._productos[product.id] = product
 
 
     # Pedidos
@@ -237,7 +269,7 @@ class Warehouse:
     @pedidos.setter
     def pedidos(self, value):
         if not isinstance(value, dict):
-            raise TypeError("pedidos debe ser un diccionario {id: Order}.")
+            raise TypeError("pedidos debe ser un diccionario.")
         for order in value.values():
             self.add_order(order)
 
@@ -245,7 +277,7 @@ class Warehouse:
         if not isinstance(order, Order):
             raise TypeError("El elemento debe ser una instancia de Order.")
         if order.id in self._pedidos:
-            raise ValueError(f"Ya existe un pedido con id '{order.id}'.")
+            raise ValueError(f"Ya existe un pedido con ese id.")
         self._pedidos[order.id] = order
 
 
@@ -263,7 +295,7 @@ class Warehouse:
     def validate_inside_warehouse(self, node):
         x, y = node[0], node[1]
         if not (0 <= x < self._ancho_x and 0 <= y < self._largo_y):
-            raise ValueError(f"El nodo ({x}, {y}) debe estar dentro de los límites del almacén.")
+            raise ValueError("El elemento debe estar dentro de los límites del almacén.")
 
     def validate_element_bounds(self, element):
         self.validate_inside_warehouse(element.ubicacion)
@@ -288,8 +320,133 @@ class Warehouse:
         for element in elements.values():
             cells |= set(element.cells())
         return cells
+
+    def _adjacent_cells_of(self, element):
+        """Devuelve el conjunto de celdas vecinas (4-conectadas) del elemento
+        que están dentro del warehouse y no pertenecen al elemento mismo."""
+        element_cells = set(element.cells())
+        neighbors = set()
+        for (x, y) in element_cells:
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                candidate = (x + dx, y + dy)
+                if candidate not in element_cells:
+                    cx, cy = candidate
+                    if 0 <= cx < self._ancho_x and 0 <= cy < self._largo_y:
+                        neighbors.add(candidate)
+        return neighbors
+
+    def _rack_access_cells(self, rack):
+        """Devuelve las celdas adyacentes a las filas del rack que pueden
+        contener productos (las dos caras largas del rack).
+        Un rack tiene siempre un lado de tamaño 2; las celdas de acceso
+        son las que quedan fuera de ese lado de 2."""
+        x0, y0 = rack.ubicacion
+        access = set()
+        if rack.ancho == 2:
+            # Las dos caras largas son la izquierda (x0-1) y la derecha (x0+2)
+            for j in range(rack.alto):
+                left = (x0 - 1, y0 + j)
+                right = (x0 + 2, y0 + j)
+                if 0 <= left[0] < self._ancho_x:
+                    access.add(left)
+                if 0 <= right[0] < self._ancho_x:
+                    access.add(right)
+        else:
+            # rack.alto == 2: las dos caras largas son la inferior (y0-1) y la superior (y0+2)
+            for i in range(rack.ancho):
+                bottom = (x0 + i, y0 - 1)
+                top = (x0 + i, y0 + 2)
+                if 0 <= bottom[1] < self._largo_y:
+                    access.add(bottom)
+                if 0 <= top[1] < self._largo_y:
+                    access.add(top)
+        return access
+
+ 
+
+    def generar_pasillos_faltantes(self):
+        """Crea pasillos de sentido 'AMBOS' para cubrir todas las celdas
+        que en este momento no estén ocupadas por ningún elemento.
+
+        Celdas contiguas que formen un rectángulo se agrupan en un único
+        pasillo.  El algoritmo es greedy: en cada iteración busca el
+        rectángulo libre más grande (por área) usando la técnica de
+        histograma + pila sobre toda la grilla, lo registra como pasillo
+        y lo marca como ocupado; repite hasta que no quedan celdas libres.
+        """
+        occupied = (
+            self._occupied_by(self._racks)
+            | self._occupied_by(self._zonas_despacho)
+            | self._occupied_by(self._pasillos)
+        )
+
+        W, H = self._ancho_x, self._largo_y
+
+        # Grilla mutable: free[y][x] = True si la celda está libre
+        free = [[((x, y) not in occupied) for x in range(W)] for y in range(H)]
+
+        next_id = self._next_auto_aisle_id()
+
+        while True:
+            rect = self._largest_free_rectangle(free, W, H)
+            if rect is None:
+                break
+
+            x0, y0, ancho, alto = rect
+
+            # Marcar celdas como ocupadas
+            for dy in range(alto):
+                for dx in range(ancho):
+                    free[y0 + dy][x0 + dx] = False
+
+            aisle_id = f"PAS_AUTO_{next_id}"
+            next_id += 1
+            aisle = Aisle(aisle_id, (x0, y0), ancho, alto, "AMBOS")
+            self.add_aisle(aisle)
+
+    def _next_auto_aisle_id(self):
+        prefix = "PAS_AUTO_"
+        max_n = -1
+        for pid in self._pasillos:
+            if pid.startswith(prefix):
+                try:
+                    n = int(pid[len(prefix):])
+                    if n > max_n:
+                        max_n = n
+                except ValueError:
+                    pass
+        return max_n + 1
+
+    def _largest_free_rectangle(self, free, W, H):
     
-    def build_graph_by_cell(self):
+        hist = [0] * W          # hist[x] = altura libre acumulada hasta la fila actual
+        best_area = 0
+        best_rect = None
+
+        for y in range(H):
+            # Actualizar histograma
+            for x in range(W):
+                hist[x] = hist[x] + 1 if free[y][x] else 0
+
+            # Algoritmo de pila para el mayor rectángulo en el histograma
+            stack = []   # (x_inicio, altura)
+            for x in range(W + 1):
+                h = hist[x] if x < W else 0
+                x_start = x
+                while stack and stack[-1][1] > h:
+                    sx, sh = stack.pop()
+                    ancho = x - sx
+                    area = ancho * sh
+                    if area > best_area:
+                        best_area = area
+                        # y es la fila inferior; y0 = fila superior del rectángulo
+                        best_rect = (sx, y - sh + 1, ancho, sh)
+                    x_start = sx
+                stack.append((x_start, h))
+
+        return best_rect
+
+    def build_graph(self):
         aisle_cells = self._occupied_by(self._pasillos)
         zones_perimeter_cells = self._zones_perimeter(self._zonas_despacho)
         for a in self._pasillos.values():
@@ -308,9 +465,15 @@ class Warehouse:
 
                 if a.sentido != "O" and (x + 1, y) in aisle_cells:  # ir al E
                     self._agregar_arista((x, y), (x + 1, y), 1)
+    
+    def _agregar_arista(self, origen, destino, distancia=1):
+        self.graph.setdefault(origen, [])
+        self.graph.setdefault(destino, [])
+        
+        self.graph[origen].insert(0, (destino, distancia))
             
 
-
+    """
     def build_graph(self):
         aisle_cells = self._occupied_by(self._pasillos)
         for a in self._pasillos.values():
@@ -349,9 +512,6 @@ class Warehouse:
     def linea_horizontal(self, y, inicio, fin, incr):
         for x in range(inicio, fin, incr):
             self._agregar_arista((x, y), (x + incr, y))
+    """
 
-    def _agregar_arista(self, origen, destino, distancia=1):
-        self.graph.setdefault(origen, [])
-        self.graph.setdefault(destino, [])
-        if all(nodo != destino for nodo, _ in self.graph[origen]):
-            self.graph[origen].insert(0, (destino, distancia))
+    

@@ -13,20 +13,25 @@ class Product:
         nombre,
         rack_id,
         ubicacion,
-        acc_por=(0,0),
+        peso_kg,
+        acceso=None,
         stock=0,
-        peso_kg=1.0
+        rack=None
     ):  
         self.id = id
         self.nombre = nombre
         self.rack_id = rack_id
-        self.rack= None
+        self.rack = rack
         self.ubicacion = ubicacion
+        self.acceso = acceso
         self.stock = stock
         self.peso_kg = peso_kg
 
-    def take_product(self, quantity):
+    def take_product(self, quantity, acc):
 
+        validate_coordinates(acc)
+        if acc != self.acceso:
+            raise ValueError("No se puede acceder al producto desde esa posicion")
         validate_positive_int(quantity, "La cantidad")
         if quantity > self.stock:
             raise ValueError("No hay stock suficiente.")
@@ -93,6 +98,24 @@ class Product:
         
         self._ubicacion = value
 
+    @property
+    def acceso(self):
+        return self._acceso
+
+    @acceso.setter
+    def acceso(self, value):
+        if value is None:
+            self._acceso = None
+            return
+        validate_coordinates(value, 2)
+        if self._ubicacion is None:
+            self._acceso = None
+            raise TypeError("La ubicación del producto debe estar definida antes de definir el acceso")
+
+        if (self._ubicacion[0] == value[0] and abs(self._ubicacion[1] - value[1]) == 1) or (self._ubicacion[1] == value[1] and abs(self._ubicacion[0] - value[0]) == 1):
+            self._acceso = value
+        else:
+            raise ValueError("El acceso por debe ser adyacente a la ubicación.")
 
 
     @property
