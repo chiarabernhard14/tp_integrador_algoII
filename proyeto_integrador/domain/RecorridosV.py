@@ -184,3 +184,50 @@ class RouteFinderV:
             "expanded_nodes": expandidos,
             "execution_time_ms": (time.perf_counter() - reloj) * 1000,
         }
+
+
+    @staticmethod
+    def zonas(grafo, inicio, nodos, buscador=PathFinderV.dijkstra):
+        """Estrategia de zonas: agrupa y ordena según la geometría de los racks."""
+        reloj = time.perf_counter()
+
+        zonaVertical = []
+        zonaHorizontal = []
+
+       
+        for loc, rack in nodos: 
+            if rack.ancho > rack.alto:
+                zonaHorizontal.append(loc)
+            else:
+                zonaVertical.append(loc)
+
+        stops = [inicio]
+
+        if zonaVertical:
+            zonaVertical.sort(key=lambda c: (c[0], c[1]))
+            stops.extend(zonaVertical)
+
+        if zonaHorizontal:
+            zonaHorizontal.sort(key=lambda c: (c[1], c[0]))
+            stops.extend(zonaHorizontal)
+
+        stops.append(inicio)
+
+        ruta = [inicio]
+        total = 0.0
+        expandidos = 0
+
+        for i in range(len(stops) - 1):
+            distancia, camino, exp = RouteFinderV._tramo(
+                grafo, buscador, stops[i], stops[i + 1]
+            )
+            total += distancia
+            expandidos += exp
+            ruta.extend(camino[1:])
+
+        return {
+            "total_distance": total,
+            "route": ruta,
+            "expanded_nodes": expandidos,
+            "execution_time_ms": (time.perf_counter() - reloj) * 1000,
+        }
