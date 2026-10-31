@@ -19,7 +19,8 @@ from .widgets import Alerta
 
 class App:
 
-    def __init__(self, datos):
+   
+    def __init__(self, datos, waves=None, generador_waves=None):
         pygame.init()
         pygame.display.set_caption("Wave Picking - Simulacion")
         self.pantalla = pygame.display.set_mode((cfg.ANCHO, cfg.ALTO))
@@ -29,7 +30,7 @@ class App:
         self.pincel = Pincel(self.pantalla)
         self.alerta = Alerta(self.fuentes.alerta_titulo, self.fuentes.alerta_texto)
 
-        self.sesion = Sesion(datos)
+        self.sesion = Sesion(datos, waves=waves, generador_waves=generador_waves)
         self.anim = Animacion()
         self.vista = VistaMapa(self.pincel, self.fuentes, self.sesion, self.anim)
         self.panel = PanelLateral(self.pincel, self.fuentes, self.sesion, self.anim)

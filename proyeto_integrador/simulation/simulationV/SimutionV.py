@@ -1,28 +1,30 @@
 from .NavegationV import Navegacion
 from .CargadorV import cargar_warehouse
-from .WavesV import armar_waves, peso_pedido
+from .RecorridosV import RouteFinderV
 
 LIMITE_BLOQUEO = 20
 
-#Mandar a generación de waves
-def _clave_tarea(tarea):
-    return (-tarea["prioridad"], tarea["producto_id"])
+# Estrategias de recorrido disponibles para ordenar las visitas de una wave.
+ESTRATEGIAS = {
+    "orden": RouteFinderV.orden_pedidos,
+    "cercania": RouteFinderV.cercania,
+}
 
 
 def _id_picker(picker):
     return picker.id
 
-#Mandar a generación de waves
-def _clave_cola(wave):
-    return (-len(wave["tareas"]), -wave["peso"], wave["id"])
+
+def _clave_turno(picker):
+    """Mueven primero los pickers con trabajo; los que deambulan, después."""
+    return (picker.estado == "deambulando", picker.id)
 
 
 class EstadoPicker:
-    
+
     def __init__(self, picker):
         self.entidad = picker
         self.id = picker.id
-        self.capacidad = picker.capacidad_carga_kg
 
         self.anterior = None
         self.pendientes = []
@@ -35,6 +37,17 @@ class EstadoPicker:
         # Wave que está ejecutando (un picker ejecuta una wave a la vez).
         self.wave = None
         self.waves_hechas = []
+
+        # Waves asignadas desde afuera que todavía no empezó, en orden.
+        self.waves_asignadas = []
+
+        # Veces que se salteó la próxima tarea del orden planificado.
+        self.saltos = 0
+
+        # Sin trabajo: próximo punto de patrulla, y pasos dados mientras tenía
+        # trabajo (para medir el recorrido sin contar la deambulación).
+        self.indice_punto = 0
+        self.pasos_trabajo = 0
 
     @property
     def pos(self):
@@ -54,291 +67,310 @@ class EstadoPicker:
 
 
 class Simulacion:
-    """Regla de trabajo: cada wave la ejecuta un único picker.
+    """Simula la ejecución de waves por pickers.
 
-    - Las waves llegan ARMADAS (las genera otro módulo del proyecto) como una
-      lista de dicts {"id", "orders"} u objetos con .id y .orders (clase Wave).
-      Esta clase no arma waves: las recibe, las reparte y las simula.
-    - Las waves esperan en una cola ordenada de la más larga a la más corta;
-      cada picker toma la primera que puede cargar (por peso), la prepara y
-      vuelve al despacho.
-    - Si quedan waves que puede cargar, toma la siguiente; si no, termina.
-    - Por eso no puede haber más pickers que waves, y ninguna wave puede
-      pesar más que lo que carga el picker más grande.
-    - El stock se reserva (se descuenta) cuando la wave entra a la simulación.
+    - Las waves llegan ARMADAS y ASIGNADAS desde otro módulo del proyecto, como
+      una lista de dicts {"id", "picker", "productos"} u objetos con .id,
+      .picker y .productos. "productos" es una lista de
+      {"producto_id", "cantidad"} (u objetos con esos atributos). Si un
+      producto se repite dentro de la wave, se suman las cantidades.
+    - Si a un picker le asignan varias waves, las ejecuta en el orden en que
+      aparecen en la lista: al llegar a despacho toma la siguiente.
+    - Esta clase no arma waves ni decide quién ejecuta cuál: solo las simula.
+    - El orden en que el picker visita los productos de su wave lo decide la
+      estrategia de recorrido elegida ("orden" o "cercania", ver ESTRATEGIAS).
+      Si la próxima tarea del orden está bloqueada por otro picker, salta a
+      la siguiente alcanzable y suma un salto (picker.saltos). Con
+      permitir_saltos=False el picker espera esa tarea: el recorrido
+      ejecutado es exactamente el planificado.
+    - Un picker sin más trabajo no se detiene: pasa a "deambulando" y recorre
+      los puntos de patrulla (intersecciones libres), esquivando a los demás
+      con las mismas reglas de movimiento; los que trabajan tienen prioridad.
+      "terminada" indica que el trabajo terminó: ejecutar() se detiene ahí y
+      tick_trabajo / pasos_trabajo miden solo el trabajo. Si se sigue
+      llamando a paso(), los pickers siguen moviéndose.
+    - Las waves llegan ya validadas (productos existentes y con stock): la
+      simulación no las controla.
+    - El stock se descuenta cuando el picker recoge el producto.
     """
 
-    def __init__(self, datos, waves=None):
+    def __init__(self, datos, waves, estrategia="cercania", permitir_saltos=True):
+        if estrategia not in ESTRATEGIAS:
+            raise ValueError(
+                f"Estrategia desconocida: {estrategia}. "
+                f"Opciones: {', '.join(ESTRATEGIAS)}."
+            )
+
         self.datos = datos
         self.waves_entrada = waves
-        self.nav = Navegacion(cargar_warehouse(datos))
-        self.reiniciar()
+        self.estrategia = estrategia
+        self.permitir_saltos = permitir_saltos
 
+        self.reiniciar()
 
     def reiniciar(self):
         self.tick = 0
         self.terminada = False
+        self.tick_trabajo = None
         self.log = []
-        self.fallidas = set()
 
-        # Control de bloqueo global.
         self.hubo_avance = False
         self.ticks_sin_avance = 0
         self.ticks_espera = 0
 
-        # Warehouse nuevo: stocks, racks y pedidos vuelven al estado del escenario.
+        # Se construye el Warehouse una sola vez.
         self.warehouse = cargar_warehouse(self.datos)
+
+        # Navegación utiliza ese mismo Warehouse.
+        self.nav = Navegacion(self.warehouse)
+
         self.productos = self.warehouse.productos
 
         self.pickers = []
+        self.pickers_por_id = {}
+
         for entidad in self.warehouse.pickers.values():
-            self.pickers.append(EstadoPicker(entidad))
+            picker = EstadoPicker(entidad)
+            self.pickers.append(picker)
+            self.pickers_por_id[picker.id] = picker
 
         self.waves = []
-        self.cola_waves = []
-        self.pedidos_wave = []
-        self._armar_waves()
-        self._validar_pickers()
-        self.cola_waves.sort(key=_clave_cola)
-        self._repartir_waves_iniciales()
+        self._cargar_waves()
+
+        self.puntos_patrulla = self._calcular_puntos_patrulla()
+
+        for numero, picker in enumerate(sorted(self.pickers, key=_id_picker)):
+            self._tomar_siguiente_wave(picker)
+
+            if self.puntos_patrulla and self.pickers:
+                picker.indice_punto = (
+                    numero * len(self.puntos_patrulla) // len(self.pickers)
+                )
+
+            if picker.wave is None:
+                picker.estado = "deambulando"
 
         self._registrar("Simulación inicializada.")
 
-#todavía estoy solucionando la implementacion de los distintods recorridos 
-    # ---------- armado de waves ----------
+    # ---------- carga de waves recibidas ----------
 
-    def _armar_waves(self):
-        """Crea las waves recibidas. Si no se recibió ninguna, usa un armado
-        PROVISORIO hasta integrar el generador de waves del proyecto."""
-
-        if self.waves_entrada is None:
-            grupos = self._grupos_provisorios()
-            for numero, pedidos in enumerate(grupos, start=1):
-                self._crear_wave(f"W{numero}", pedidos)
-            return
+    def _cargar_waves(self):
+        """Prepara para simular las waves recibidas (ya armadas y asignadas)."""
 
         if not isinstance(self.waves_entrada, list):
             raise TypeError("waves debe ser una lista de waves.")
 
-        vistos = set()
+        if not self.waves_entrada:
+            raise ValueError("No hay waves para ejecutar.")
+
+        ids_vistos = set()
         for wave in self.waves_entrada:
-            id_wave, pedidos = self._leer_wave(wave)
+            id_wave, id_picker, solicitados = self._leer_wave(wave)
 
-            for pedido in pedidos:
-                if pedido.id in vistos:
-                    raise ValueError(f"El pedido {pedido.id} está en más de una wave.")
-                vistos.add(pedido.id)
+            if id_wave in ids_vistos:
+                raise ValueError(f"La wave {id_wave} está repetida.")
+            ids_vistos.add(id_wave)
 
-            self._crear_wave(id_wave, pedidos)
+            self._crear_wave(id_wave, id_picker, solicitados)
 
     def _leer_wave(self, wave):
-        """Devuelve (id, pedidos propios) de una wave recibida: un dict con 'id'
-        y 'orders', o un objeto con .id y .orders (como la clase Wave)."""
+        """Lee una wave ya armada y asignada externamente."""
 
         if isinstance(wave, dict):
             id_wave = wave.get("id")
-            origen = wave.get("orders")
-        elif hasattr(wave, "id") and hasattr(wave, "orders"):
+            id_picker = wave.get("picker")
+            origen = wave.get("productos")
+
+        elif (
+            hasattr(wave, "id")
+            and hasattr(wave, "picker")
+            and hasattr(wave, "productos")
+        ):
             id_wave = wave.id
-            origen = wave.orders
+            id_picker = wave.picker
+            origen = wave.productos
+
         else:
             raise TypeError(
-                "Cada wave debe ser un dict con 'id' y 'orders' o un objeto con .id y .orders."
+                "Cada wave debe tener id, picker y productos."
             )
 
-        if id_wave is None or origen is None:
-            raise ValueError("Una wave recibida no tiene 'id' u 'orders'.")
+        if id_wave is None or id_picker is None or origen is None:
+            raise ValueError(
+                "Una wave no tiene id, picker o productos."
+            )
 
-        pedidos = []
-        for pedido in origen:
-            id_pedido = pedido["id"] if isinstance(pedido, dict) else pedido.id
-            propio = self.warehouse.pedidos.get(id_pedido)
-            if propio is None:
+        # Si el asignador entrega el objeto Picker, obtenemos su ID.
+        if hasattr(id_picker, "id"):
+            id_picker = id_picker.id
+
+        id_picker = str(id_picker).upper()
+
+        if id_picker not in self.pickers_por_id:
+            raise ValueError(
+                f"La wave {id_wave} está asignada a un picker "
+                f"inexistente: {id_picker}."
+            )
+
+        solicitados = []
+
+        for entrada in origen:
+            if isinstance(entrada, dict):
+                producto_id = entrada["producto_id"]
+                cantidad = entrada["cantidad"]
+            else:
+                producto_id = entrada.producto_id
+                cantidad = entrada.cantidad
+
+            producto_id = str(producto_id).upper()
+
+            if cantidad <= 0:
                 raise ValueError(
-                    f"La wave {id_wave} referencia un pedido inexistente: {id_pedido}."
+                    f"La wave {id_wave} pide una cantidad inválida "
+                    f"de {producto_id}: {cantidad}."
                 )
-            pedidos.append(propio)
 
-        return str(id_wave), pedidos
+            solicitados.append({
+                "producto_id": producto_id,
+                "cantidad": cantidad
+            })
 
-    def _grupos_provisorios(self):
-        """PROVISORIO: agrupa los pedidos pendientes con WavesV.armar_waves.
-        Se reemplaza por el generador de waves del proyecto."""
+        return str(id_wave), id_picker, solicitados
 
-        configuracion = self.datos.get("configuracion", {})
-        max_pedidos = configuracion.get("wave_max_pedidos", 0)
-        max_productos = configuracion.get("wave_max_productos", 0)
-
-        capacidad_maxima = 0.0
-        for picker in self.pickers:
-            capacidad_maxima = max(capacidad_maxima, picker.capacidad)
-
-        pendientes = []
-        for pedido in self.warehouse.pedidos.values():
-            if pedido.estado == "PENDIENTE":
-                pendientes.append(pedido)
-
-        grupos, excluidos = armar_waves(
-            pendientes, max_pedidos, max_productos, capacidad_maxima)
-
-        for pedido in excluidos:
-            self._registrar(
-                f"Pedido {pedido.id}: no entra ni en una wave vacía (supera el "
-                f"máximo de productos o el peso que carga el picker más grande) "
-                f"y no se incluye en ninguna."
-            )
-
-        return grupos
-
-    def _crear_wave(self, id_wave, pedidos):
-        """Arma las tareas (una por producto) de una wave y la deja en la cola."""
-
-        peso = 0.0
-        for pedido in pedidos:
-            peso += peso_pedido(pedido)
+    def _crear_wave(self, id_wave, id_picker, solicitados):
+        """Prepara las tareas y registra la asignación recibida."""
 
         tareas = {}
 
-        for pedido in pedidos:
-            for indice, item in enumerate(pedido.items):
-                producto_id = item.producto_id
+        for entrada in solicitados:
+            producto_id = entrada["producto_id"]
 
-                if item.producto is None:
-                    self._registrar(
-                        f"Pedido {pedido.id}: producto "
-                        f"{producto_id} inexistente."
-                    )
-                    self.fallidas.add((pedido.id, indice))
-                    continue
+            if producto_id not in tareas:
+                tareas[producto_id] = {
+                    "id": f"{id_wave}:{producto_id}",
+                    "producto_id": producto_id,
+                    "cantidad": 0,
+                }
 
-                if producto_id not in tareas:
-                    tareas[producto_id] = {
-                        "id": f"{id_wave}:{producto_id}",
-                        "producto_id": producto_id,
-                        "cantidad": 0,
-                        "prioridad": pedido.prioridad,
-                        "lineas": [],
-                    }
-
-                tarea = tareas[producto_id]
-                tarea["cantidad"] += item.cantidad
-                tarea["prioridad"] = max(tarea["prioridad"], pedido.prioridad)
-
-                tarea["lineas"].append({
-                    "pedido_id": pedido.id,
-                    "indice_item": indice,
-                    "cantidad": item.cantidad,
-                    "item": item,
-                })
-
-            self.pedidos_wave.append(pedido)
-
-        # Detecta demandas que superan el stock disponible y reserva el resto:
-        # el stock se descuenta ahora, al armarse la wave (no cuando el picker recoge).
-        for producto_id, tarea in list(tareas.items()):
-            producto = self.productos[producto_id]
-
-            if tarea["cantidad"] > producto.stock:
-                self._registrar(
-                    f"Stock insuficiente para {producto_id} en {id_wave}: "
-                    f"se solicitan {tarea['cantidad']} unidades y "
-                    f"hay {producto.stock}."
-                )
-
-                # No asignamos una tarea que no pueda completarse.
-                for linea in tarea["lineas"]:
-                    self.fallidas.add((linea["pedido_id"], linea["indice_item"]))
-
-                del tareas[producto_id]
-            else:
-                producto.take_product(tarea["cantidad"])
+            tareas[producto_id]["cantidad"] += entrada["cantidad"]
 
         wave = {
             "id": id_wave,
-            "pedidos": list(pedidos),
+            "solicitados": solicitados,
             "tareas": tareas,
-            "peso": peso,
-            "picker": None,
+            "picker": id_picker,
             "estado": "CREADA",
         }
+
         self.waves.append(wave)
-        self.cola_waves.append(wave)
 
-    def _validar_pickers(self):
-        """Cada wave la ejecuta un solo picker: no puede haber más pickers que
-        waves, y cada wave tiene que entrar en al menos un picker (por peso)."""
+        # Se guarda en la cola del picker que vino asignado.
+        # No se busca otro picker ni se modifica la asignación.
+        self.pickers_por_id[id_picker].waves_asignadas.append(wave)
 
-        cantidad_waves = len(self.waves)
-        cantidad_pickers = len(self.pickers)
+    # ---------- ejecución de las waves asignadas ----------
 
-        if cantidad_waves == 0:
-            raise ValueError("No hay waves para ejecutar.")
+    def _tomar_siguiente_wave(self, picker):
+        """El picker empieza la próxima wave que tiene asignada.
+        Devuelve False si ya no le quedan."""
 
-        if cantidad_pickers > cantidad_waves:
-            raise ValueError(
-                f"Hay {cantidad_pickers} pickers pero solo {cantidad_waves} "
-                f"wave(s). Cada wave la ejecuta un solo picker, así que el máximo "
-                f"es {cantidad_waves}."
-            )
+        if not picker.waves_asignadas:
+            return False
 
-        capacidad_maxima = 0.0
-        for picker in self.pickers:
-            capacidad_maxima = max(capacidad_maxima, picker.capacidad)
-
-        for wave in self.waves:
-            if wave["peso"] > capacidad_maxima:
-                raise ValueError(
-                    f"La wave {wave['id']} pesa {wave['peso']:g} kg y ningún "
-                    f"picker carga tanto (máximo {capacidad_maxima:g} kg)."
-                )
-
-    # ---------- reparto de waves a pickers ----------
-
-    def _repartir_waves_iniciales(self):
-        for picker in sorted(self.pickers, key=_id_picker):
-            wave = self._buscar_wave(picker)
-            if wave is not None:
-                self._tomar_wave(picker, wave)
-
-    def _buscar_wave(self, picker):
-        """Primera wave de la cola que el picker puede cargar (por peso)."""
-
-        for wave in self.cola_waves:
-            if wave["peso"] <= picker.capacidad:
-                return wave
-        return None
-
-    def _tomar_wave(self, picker, wave):
-        """El picker toma una wave de la cola y carga sus tareas."""
-
-        for i, candidata in enumerate(self.cola_waves):
-            if candidata is wave:
-                del self.cola_waves[i]
-                break
-
-        wave["picker"] = picker.id
+        wave = picker.waves_asignadas.pop(0)
         wave["estado"] = "EN_PROCESO"
 
         picker.wave = wave
         picker.objetivo = None
         picker.destinos = set()
         picker.estado = "disponible"
-
-        # La wave ya se comprobó contra la capacidad del picker en _buscar_wave.
-        picker.pendientes = sorted(wave["tareas"].values(), key=_clave_tarea)
-
-        for pedido in wave["pedidos"]:
-            pedido.estado = "EN_PREPARACION"
+        # Se mantiene el orden en que los productos aparecen en la wave.
+        picker.pendientes = list(wave["tareas"].values())
 
         self.hubo_avance = True
         self._registrar(
             f"{picker.id}: toma la wave {wave['id']} "
-            f"({len(wave['pedidos'])} pedidos, {len(picker.pendientes)} productos)."
+            f"({len(picker.pendientes)} productos)."
         )
-        self._actualizar_pedidos()
+        self._ordenar_pendientes(picker)
+        return True
+
+    def _accesos_producto(self, producto):
+        """Devuelve la única celda desde la que se puede recoger el producto."""
+
+        if producto.acceso is None:
+            return set()
+
+        acceso = tuple(producto.acceso)
+
+        if acceso not in self.nav.grafo:
+            return set()
+
+        return {acceso}
+    
+    def _nodo_acceso(self, picker, tarea):
+        """Obtiene la celda de acceso real al producto."""
+
+        producto = self.productos[tarea["producto_id"]]
+
+        accesos = self._accesos_producto(producto)
+
+        if not accesos:
+            return None
+
+        ruta = self.nav.camino(picker.pos, accesos)
+
+        if ruta is None:
+            return None
+
+        return ruta[-1] if ruta else picker.pos
+
+    def _ordenar_pendientes(self, picker):
+        """Reordena los pendientes del picker según la estrategia de recorrido.
+        Las tareas sin acceso quedan al final, en su orden original."""
+
+        tareas_por_nodo = {}
+        sin_acceso = []
+
+        for tarea in picker.pendientes:
+            nodo = self._nodo_acceso(picker, tarea)
+
+            if nodo is None:
+                sin_acceso.append(tarea)
+            elif nodo in tareas_por_nodo:
+                tareas_por_nodo[nodo].append(tarea)
+            else:
+                tareas_por_nodo[nodo] = [tarea]
+
+        if not tareas_por_nodo:
+            return
+
+        estrategia = ESTRATEGIAS[self.estrategia]
+
+        try:
+            plan = estrategia(self.nav.grafo, picker.pos, list(tareas_por_nodo))
+        except ValueError as error:
+            self._registrar(
+                f"{picker.id}: la estrategia '{self.estrategia}' falló ({error}); "
+                f"se mantiene el orden de la wave."
+            )
+            return
+
+        ordenadas = []
+        for nodo in plan["order"]:
+            ordenadas.extend(tareas_por_nodo[nodo])
+        ordenadas.extend(sin_acceso)
+
+        picker.pendientes = ordenadas
+
+        self._registrar(
+            f"{picker.id}: recorrido '{self.estrategia}' planificado, "
+            f"distancia {plan['total_distance']:g}."
+        )
 
     def _llegar_a_despacho(self, picker):
-        """El picker llegó a despacho con su wave lista: toma otra o termina."""
+        """El picker llegó a despacho con su wave lista: toma otra o sigue
+        recorriendo el warehouse."""
 
         self.hubo_avance = True
 
@@ -348,27 +380,78 @@ class Simulacion:
             self._registrar(f"{picker.id}: completó la wave {picker.wave['id']}.")
             picker.wave = None
 
-        siguiente = self._buscar_wave(picker)
+        if not self._tomar_siguiente_wave(picker):
+            picker.estado = "deambulando"
+            picker.objetivo = None
+            picker.destinos = set()
+            self._registrar(
+                f"{picker.id}: llegó a despacho, sin más trabajo; "
+                f"sigue recorriendo el warehouse."
+            )
 
-        if siguiente is not None:
-            self._tomar_wave(picker, siguiente)
-        else:
-            picker.estado = "terminado"
-            self._registrar(f"{picker.id}: llegó a despacho.")
+    def _calcular_puntos_patrulla(self):
+        """Celdas por las que pasan los pickers sin trabajo: intersecciones del
+        grafo, sin las celdas de despacho ni las de acceso a productos (para no
+        estorbar a quien trabaja). Orden fijo, así la simulación es repetible."""
 
+        reservadas = set(self.nav.despacho)
+        for accesos in self.nav.acceso_rack.values():
+            reservadas.update(accesos)
+
+        puntos = []
+        for celda in self.nav.intersecciones:
+            if celda in self.nav.grafo and celda not in reservadas:
+                puntos.append(celda)
+
+        # Sin intersecciones útiles (por ejemplo un pasillo recto): cualquier
+        # celda libre.
+        if len(puntos) < 2:
+            puntos = [c for c in self.nav.grafo if c not in reservadas]
+
+        return sorted(puntos)
+
+    def _deambular(self, picker):
+        """Sin trabajo, el picker sigue por los puntos de patrulla, esquivando
+        a los demás con las mismas reglas de movimiento."""
+
+        if not picker.ruta:
+            self._elegir_punto_patrulla(picker)
+
+        if picker.ruta:
+            self._mover(picker)
+
+    def _elegir_punto_patrulla(self, picker):
+        """Va al próximo punto de patrulla con ruta libre. Si ninguno la tiene
+        por ahora, espera en su celda y reintenta el próximo tick."""
+
+        total = len(self.puntos_patrulla)
+        ocupadas = self._ocupadas(picker)
+
+        for desplazamiento in range(total):
+            indice = (picker.indice_punto + desplazamiento) % total
+            punto = self.puntos_patrulla[indice]
+
+            if punto == picker.pos:
+                continue
+
+            ruta = self.nav.camino(picker.pos, {punto}, ocupadas=ocupadas)
+
+            if ruta:
+                picker.ruta = list(ruta)
+                picker.destinos = {punto}
+                picker.indice_punto = (indice + 1) % total
+                return
 
     def paso(self):
-        """Avanza la simulación un tick."""
-
-        if self.terminada:
-            return self.estado()
+        """Avanza la simulación un tick. Terminado el trabajo, los pickers
+        siguen deambulando mientras se llame a paso()."""
 
         self.tick += 1
         self.hubo_avance = False
 
-        # El orden de movimiento es determinista.
-        for picker in sorted(self.pickers, key=_id_picker):
-            if picker.estado in ("terminado", "bloqueado"):
+        # El orden de movimiento es determinista: primero los que trabajan.
+        for picker in sorted(self.pickers, key=_clave_turno):
+            if picker.estado == "bloqueado":
                 continue
 
             self._avanzar(picker)
@@ -378,18 +461,20 @@ class Simulacion:
             if picker.estado == "esperando":
                 self.ticks_espera += 1
 
-        self._actualizar_pedidos()
-        self._detectar_bloqueo()
+        if not self.terminada:
+            self._detectar_bloqueo()
 
-        if all(p.estado in ("terminado", "bloqueado") for p in self.pickers):
-            self.terminada = True
-            self._registrar("Simulación finalizada.")
+            if all(p.estado in ("deambulando", "bloqueado") for p in self.pickers):
+                self.terminada = True
+                self.tick_trabajo = self.tick
+                self._registrar("Trabajo finalizado.")
 
         return self.estado()
 
     def _detectar_bloqueo(self):
-        """Si pasan LIMITE_BLOQUEO ticks sin avance, los pickers que siguen
-        en juego pasan a 'bloqueado' para que la simulación pueda terminar."""
+        """Si pasan LIMITE_BLOQUEO ticks sin avance del trabajo, los pickers
+        que siguen trabajando pasan a 'bloqueado' para que la simulación pueda
+        terminar. Deambular no cuenta como avance."""
 
         if self.hubo_avance:
             self.ticks_sin_avance = 0
@@ -401,7 +486,7 @@ class Simulacion:
             return
 
         for picker in self.pickers:
-            if picker.estado != "terminado":
+            if picker.estado not in ("deambulando", "bloqueado"):
                 picker.estado = "bloqueado"
                 self._registrar(
                     f"{picker.id}: bloqueado, sin avance durante "
@@ -422,18 +507,23 @@ class Simulacion:
 
         return self.estado()
 
+    # ---------- movimiento ----------
 
     def _ocupadas(self, picker):
-        """Celdas ocupadas por los demás pickers que siguen en juego.
-        Un picker terminado (ya entregó en despacho) no bloquea celdas."""
+        """Celdas ocupadas por los demás pickers. Los que deambulan también
+        ocupan su celda: nadie pisa a nadie."""
 
         ocupadas = set()
         for otro in self.pickers:
-            if otro is not picker and otro.estado != "terminado":
+            if otro is not picker:
                 ocupadas.add(otro.pos)
         return ocupadas
 
     def _avanzar(self, picker):
+        if picker.estado == "deambulando":
+            self._deambular(picker)
+            return
+
         if picker.estado == "esperando":
             picker.estado = "disponible"
 
@@ -452,56 +542,63 @@ class Simulacion:
             self._mover(picker)
 
     def _elegir_objetivo(self, picker):
-        """Elige la tarea pendiente cuyo acceso tenga una ruta más corta."""
+        """Elige la primera tarea pendiente que tenga ruta disponible."""
 
         ocupadas = self._ocupadas(picker)
 
-        mejor_tarea = None
-        mejor_ruta = None
-        mejor_acceso = None
+        elegida = None
+        ruta = None
+        posicion = 0
 
-        for tarea in sorted(picker.pendientes, key=_clave_tarea):
+        for indice, tarea in enumerate(picker.pendientes):
             producto = self.productos[tarea["producto_id"]]
-            x = producto.ubicacion[0]
-            y = producto.ubicacion[1]
 
-            accesos = self.nav.accesos(x, y)
+            accesos = self._accesos_producto(producto)
 
-            if not accesos:
-                continue
+            ruta_tarea = None
 
-            ruta = self.nav.camino(picker.pos, accesos, ocupadas=ocupadas)
-
-            if ruta is None:
-                continue
-
-            if (
-                mejor_ruta is None
-                or len(ruta) < len(mejor_ruta)
-                or (
-                    len(ruta) == len(mejor_ruta)
-                    and tarea["producto_id"] < mejor_tarea["producto_id"]
+            if accesos:
+                ruta_tarea = self.nav.camino(
+                    picker.pos,
+                    accesos,
+                    ocupadas=ocupadas
                 )
-            ):
-                mejor_tarea = tarea
-                mejor_ruta = ruta
-                mejor_acceso = ruta[-1] if ruta else picker.pos
 
-        if mejor_tarea is None:
+            if ruta_tarea is None:
+                if not self.permitir_saltos:
+                    break
+                continue
+
+            elegida = tarea
+            ruta = ruta_tarea
+            posicion = indice
+            break
+
+        if elegida is None:
             picker.estado = "esperando"
-            self._registrar(f"{picker.id}: no hay ruta disponible por ahora.")
+            self._registrar(
+                f"{picker.id}: no hay ruta disponible por ahora."
+            )
             return
 
-        picker.objetivo = mejor_tarea
-        picker.destinos = {mejor_acceso}
-        picker.ruta = list(mejor_ruta)
+        if posicion > 0 and elegida is not picker.objetivo:
+            picker.saltos += 1
+            self._registrar(
+                f"{picker.id}: salta a {elegida['producto_id']}, "
+                f"{picker.pendientes[0]['producto_id']} está bloqueado."
+            )
+
+        picker.objetivo = elegida
+        picker.destinos = {ruta[-1] if ruta else picker.pos}
+        picker.ruta = list(ruta)
         picker.estado = "yendo_a_producto"
 
-        self._registrar(f"{picker.id}: se dirige a {mejor_tarea['producto_id']}.")
+        self._registrar(
+            f"{picker.id}: se dirige a {elegida['producto_id']}."
+        )
 
     def _recoger(self, picker):
-        """Recoge las líneas de la tarea con Picker.pick (las marca como recogidas;
-        el stock ya se reservó cuando se armó la wave)."""
+        """Recoge la tarea objetivo y descuenta el stock."""
 
         tarea = picker.objetivo
 
@@ -511,14 +608,24 @@ class Simulacion:
         producto = self.productos[tarea["producto_id"]]
         cantidad = tarea["cantidad"]
 
-        for linea in tarea["lineas"]:
-            picker.entidad.pick(linea["item"])
+        if producto.acceso is None:
+            raise ValueError(
+                f"El producto {producto.id} no tiene acceso asignado."
+            )
 
-            picker.recogidos.append({
-                "producto_id": producto.id,
-                "pedido_id": linea["pedido_id"],
-                "cantidad": linea["cantidad"],
-            })
+        if picker.pos != tuple(producto.acceso):
+            raise ValueError(
+                f"El picker {picker.id} no está en el acceso "
+                f"correcto del producto {producto.id}."
+            )
+
+        producto.take_product(cantidad, picker.pos)
+
+        picker.recogidos.append({
+            "producto_id": producto.id,
+            "wave_id": picker.wave["id"],
+            "cantidad": cantidad,
+        })
 
         picker.pendientes.remove(tarea)
         picker.objetivo = None
@@ -529,9 +636,6 @@ class Simulacion:
         self._registrar(
             f"{picker.id}: recogió {cantidad} unidades de {producto.id}."
         )
-
-        self._actualizar_pedidos()
-
 
     def _planificar_regreso(self, picker):
         """Planifica el regreso a despacho al terminar sus tareas."""
@@ -557,7 +661,6 @@ class Simulacion:
         if not picker.ruta and picker.pos in self.nav.despacho:
             self._llegar_a_despacho(picker)
 
-
     def _mover(self, picker):
         """Mueve al preparador una celda, sin ocupar celdas ajenas."""
 
@@ -567,6 +670,11 @@ class Simulacion:
         siguiente = picker.ruta[0]
 
         if siguiente in self._ocupadas(picker):
+            if picker.estado == "deambulando":
+                # Cede el paso: elige otro punto de patrulla el próximo tick.
+                picker.ruta = []
+                return
+
             picker.estado = "esperando"
             self._replanificar(picker)
             return
@@ -579,6 +687,10 @@ class Simulacion:
 
         if distancia != 1:
             picker.ruta = []
+
+            if picker.estado == "deambulando":
+                return
+
             picker.estado = "esperando"
             self._replanificar(picker)
             return
@@ -586,68 +698,46 @@ class Simulacion:
         anterior = picker.pos
         picker.anterior = anterior
         picker.pos = siguiente
-        picker.trail.append(siguiente)
         picker.ruta.pop(0)
-        self.hubo_avance = True
 
-        self._registrar(f"{picker.id}: {anterior} -> {siguiente}.")
+        # Deambular no cuenta como avance del trabajo ni como recorrido.
+        if picker.estado != "deambulando":
+            picker.trail.append(siguiente)
+            picker.pasos_trabajo += 1
+            self.hubo_avance = True
+            self._registrar(f"{picker.id}: {anterior} -> {siguiente}.")
 
         if picker.estado == "regresando" and picker.pos in self.nav.despacho:
             picker.ruta = []
             self._llegar_a_despacho(picker)
 
     def _replanificar(self, picker):
-        """Intenta encontrar una ruta alternativa."""
+            """Intenta encontrar una ruta alternativa."""
 
-        if picker.objetivo is not None:
-            producto = self.productos[picker.objetivo["producto_id"]]
-            destinos = self.nav.accesos(producto.ubicacion[0], producto.ubicacion[1])
-        else:
-            destinos = self.nav.despacho
+            if picker.objetivo is not None:
+                producto = self.productos[picker.objetivo["producto_id"]]
+                destinos = self._accesos_producto(producto)
+            else:
+                destinos = self.nav.despacho
 
-        ruta = self.nav.camino(
-            picker.pos,
-            destinos,
-            ocupadas=self._ocupadas(picker),
-        )
+            ruta = self.nav.camino(
+                picker.pos,
+                destinos,
+                ocupadas=self._ocupadas(picker),
+            )
 
-        if ruta is None:
-            picker.ruta = []
-            return
+            if ruta is None:
+                picker.ruta = []
+                return
 
-        picker.ruta = list(ruta)
+            picker.ruta = list(ruta)
 
     def _esquivar(self, picker, ocupadas=None):
         """Compatibilidad con la interfaz de la versión anterior."""
 
         self._replanificar(picker)
 
-
-    def _actualizar_pedidos(self):
-        """Actualiza el estado de los pedidos: los de una wave que todavía
-        espera en la cola siguen PENDIENTES."""
-
-        for wave in self.waves:
-            en_cola = wave["picker"] is None
-
-            for pedido in wave["pedidos"]:
-                if en_cola:
-                    pedido.estado = "PENDIENTE"
-                    continue
-
-                todos_recogidos = True
-                algun_fallido = False
-
-                for indice, item in enumerate(pedido.items):
-                    if not item.picked:
-                        todos_recogidos = False
-                    if (pedido.id, indice) in self.fallidas:
-                        algun_fallido = True
-
-                if todos_recogidos and not algun_fallido:
-                    pedido.estado = "PREPARADO"
-                else:
-                    pedido.estado = "EN_PREPARACION"
+    # ---------- estado ----------
 
     def _registrar(self, mensaje):
         self.log.append(f"[Tick {self.tick}] {mensaje}")
@@ -655,13 +745,16 @@ class Simulacion:
         if len(self.log) > 200:
             self.log.pop(0)
 
-
     def estado(self):
         """Devuelve una instantánea del estado para la interfaz gráfica."""
 
         return {
             "tick": self.tick,
             "terminada": self.terminada,
+            "tick_trabajo": self.tick_trabajo,
+            "estrategia": self.estrategia,
+            "permitir_saltos": self.permitir_saltos,
+            "saltos": sum(p.saltos for p in self.pickers),
             "pickers": [
                 {
                     "id": p.id,
@@ -679,6 +772,9 @@ class Simulacion:
                     "trail": list(p.trail),
                     "wave_id": p.wave["id"] if p.wave else None,
                     "waves_hechas": list(p.waves_hechas),
+                    "saltos": p.saltos,
+                    "pasos_trabajo": p.pasos_trabajo,
+                    "indice_punto": p.indice_punto,
                 }
                 for p in self.pickers
             ],
@@ -687,7 +783,7 @@ class Simulacion:
                     "id": w["id"],
                     "estado": w["estado"],
                     "picker": w["picker"],
-                    "pedidos": [pedido.id for pedido in w["pedidos"]],
+                    "productos": [dict(s) for s in w["solicitados"]],
                 }
                 for w in self.waves
             ],
@@ -695,41 +791,34 @@ class Simulacion:
                 producto_id: producto.stock
                 for producto_id, producto in self.productos.items()
             },
-            "pedidos": [
-                {
-                    "id": pedido.id,
-                    "estado": pedido.estado,
-                    "items_picked": [item.picked for item in pedido.items],
-                }
-                for pedido in self.pedidos_wave
-            ],
             "log": list(self.log),
-            "fallidas": [list(fallida) for fallida in self.fallidas],
-            "pedidos_wave_ids": [pedido.id for pedido in self.pedidos_wave],
         }
 
     def restaurar(self, estado):
         """Restaura el progreso de una instantánea guardada.
-        Parte de un reinicio con las mismas waves que se guardaron (el stock
-        reservado sale de ahí) y reproduce los pick solo para marcar los ítems
-        como recogidos."""
+        Parte de un reinicio con las mismas waves (y los mismos pickers
+        asignados) que se guardaron, y vuelve a descontar el stock de lo que
+        cada picker ya recogió."""
 
         # Las waves se reconstruyen con lo guardado: no dependen del generador.
         self.waves_entrada = []
         for guardada in estado["waves"]:
-            pedidos = []
-            for id_pedido in guardada["pedidos"]:
-                pedidos.append({"id": id_pedido})
-            self.waves_entrada.append({"id": guardada["id"], "orders": pedidos})
+            self.waves_entrada.append({
+                "id": guardada["id"],
+                "picker": guardada["picker"],
+                "productos": guardada["productos"],
+            })
+
+        # La estrategia guardada vale también para las waves que faltan empezar.
+        self.estrategia = estado.get("estrategia", self.estrategia)
+        self.permitir_saltos = estado.get("permitir_saltos", self.permitir_saltos)
 
         self.reiniciar()
 
-        # Deshace el reparto inicial: la partida dice qué wave tiene cada picker.
-        self.cola_waves = sorted(self.waves, key=_clave_cola)
+        # Deshace lo que hizo reiniciar al arrancar: la partida dice qué
+        # wave tiene cada picker y en qué estado está cada una.
         waves_por_id = {}
         for wave in self.waves:
-            wave["picker"] = None
-            wave["estado"] = "CREADA"
             waves_por_id[wave["id"]] = wave
 
         for picker in self.pickers:
@@ -737,12 +826,12 @@ class Simulacion:
             picker.pendientes = []
             picker.objetivo = None
             picker.waves_hechas = []
+            picker.waves_asignadas = []
 
         self.tick = estado["tick"]
         self.terminada = estado["terminada"]
+        self.tick_trabajo = estado.get("tick_trabajo")
         self.log = list(estado.get("log", []))
-
-        self.fallidas = {tuple(fallida) for fallida in estado.get("fallidas", [])}
 
         for guardada in estado["waves"]:
             wave = waves_por_id.get(guardada["id"])
@@ -750,28 +839,12 @@ class Simulacion:
             if wave is None:
                 continue
 
-            wave["picker"] = guardada["picker"]
             wave["estado"] = guardada["estado"]
 
-            if guardada["picker"] is not None:
-                self.cola_waves.remove(wave)
-
-        pedidos_por_id = {}
-        for pedido in self.pedidos_wave:
-            pedidos_por_id[pedido.id] = pedido
-
-        for guardado in estado["pedidos"]:
-            pedido = pedidos_por_id.get(guardado["id"])
-
-            if pedido is None:
-                continue
-
-            for indice, picked in enumerate(guardado.get("items_picked", [])):
-                if indice < len(pedido.items):
-                    if picked and not pedido.items[indice].picked:
-                        pedido.items[indice].pick_item()
-
-            pedido.estado = guardado["estado"]
+        # Las que todavía no empezaron vuelven a la lista de su picker, en orden.
+        for wave in self.waves:
+            if wave["estado"] == "CREADA":
+                self.pickers_por_id[wave["picker"]].waves_asignadas.append(wave)
 
         estados_por_id = {}
         for p in estado["pickers"]:
@@ -792,8 +865,21 @@ class Simulacion:
             picker.estado = guardado["estado"]
             picker.trail = [tuple(celda) for celda in guardado["trail"]]
             picker.recogidos = list(guardado["recogidos"])
+
+            # El stock baja al recoger: se vuelve a descontar lo ya recogido.
+            for recogido in picker.recogidos:
+                producto = self.productos[recogido["producto_id"]]
+
+                producto.take_product(
+                    recogido["cantidad"],
+                    producto.acceso
+                )
+
             picker.destinos = {tuple(d) for d in guardado.get("destinos", [])}
             picker.waves_hechas = list(guardado.get("waves_hechas", []))
+            picker.saltos = guardado.get("saltos", 0)
+            picker.pasos_trabajo = guardado.get("pasos_trabajo", 0)
+            picker.indice_punto = guardado.get("indice_punto", picker.indice_punto)
 
             picker.wave = waves_por_id.get(guardado["wave_id"])
 

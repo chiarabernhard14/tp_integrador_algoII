@@ -123,24 +123,38 @@ def _crear_pasillos(racks, filas, ancho_x, alto_rack):
 
 def _crear_despacho(warehouse, ancho_x):
     ancho_zona = min(5, ancho_x - 2)
+
     posiciones = [("OUT", "OUTBOUND", 1)]
+
     if ancho_x >= 16:
-        posiciones.append(("IN", "INBOUND", ancho_x - 1 - ancho_zona))
+        posiciones.append(
+            ("IN", "INBOUND", ancho_x - 1 - ancho_zona)
+        )
+
     for nombre, tipo, x_zona in posiciones:
         id_puerta = f"PUERTA_{nombre}_1"
+
+        # La puerta queda en el borde superior del almacén.
         warehouse["puertas"].append({
             "id": id_puerta,
             "tipo": tipo,
-            "ubicacion": {"x": x_zona + ancho_zona // 2, "y": 0},
+            "ubicacion": {
+                "x": x_zona + ancho_zona // 2,
+                "y": 0,
+            },
         })
-        # La zona arranca en y=0 para contener a la puerta y termina en y=2,
-        # así las celdas de pasillo en y=3 siguen siendo adyacentes a ella.
+
+        # La zona comienza en y=1.
+        # La puerta queda fuera de la zona, justo arriba.
         warehouse["zonas_despacho"].append({
             "id": f"ZONA_{nombre}",
             "puerta_id": id_puerta,
-            "ubicacion": {"x": x_zona, "y": 0},
+            "ubicacion": {
+                "x": x_zona,
+                "y": 1,
+            },
             "ancho": ancho_zona,
-            "alto": 3,
+            "alto": 2,
             "peso_max_kg": 500.0,
         })
 

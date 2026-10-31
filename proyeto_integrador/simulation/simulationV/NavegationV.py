@@ -1,8 +1,10 @@
-#from domain.pathFinding import PathFinder
-from domain.RecorridosV import PathFinderV
-
-AVANCE = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "O": (-1, 0)}
-DIRECCIONES = ((0, 1), (0, -1), (1, 0), (-1, 0))
+from .RecorridosV import PathFinderV
+DIRECCIONES = (
+    (0, 1),
+    (0, -1),
+    (1, 0),
+    (-1, 0)
+)
 
 
 
@@ -40,7 +42,7 @@ class Navegacion:
 
         # Reutilizar el grafo construido por Warehouse.
         if not warehouse.graph:
-            warehouse.build_graph_by_cell()
+            warehouse.build_graph()
 
         if not isinstance(warehouse.graph, dict):
             raise TypeError(
@@ -102,7 +104,7 @@ class Navegacion:
         }
 
         for producto in warehouse.productos.values():
-            celda = tuple(producto.ubicacion)
+            celda = tuple(producto.ubicacion[:2])
 
             if celda not in self.pilas and self.acceso_rack.get(celda):
                 self._agregar_pila(celda)
@@ -128,20 +130,26 @@ class Navegacion:
 
 
     def _registrar_accesos(self, rack):
-        x0 = rack.ubicacion[0]
-        y0 = rack.ubicacion[1]
+        x0, y0 = rack.ubicacion
+
         for celda in rack.cells():
             x, y = celda
-            candidatas = []
+
             if rack.ancho == 2:
-                candidatas.append((x - 1, y) if x == x0 else (x + 1, y))
-            if rack.alto == 2:
-                candidatas.append((x, y - 1) if y == y0 else (x, y + 1))
-            accesos = set()
-            for candidata in candidatas:
-                if candidata in self.vecinos:
-                    accesos.add(candidata)
-            self.acceso_rack[celda] = accesos
+                candidata = (
+                    (x0 - 1, y) if x == x0
+                    else (x0 + 2, y)
+                )
+            else:
+                candidata = (
+                    (x, y0 - 1) if y == y0
+                    else (x, y0 + 2)
+                )
+
+            if candidata in self.vecinos:
+                self.acceso_rack[celda] = {candidata}
+            else:
+                self.acceso_rack[celda] = set()
 
     def _agregar_pila(self, celda):
         accesos = sorted(self.acceso_rack[celda])
@@ -169,15 +177,8 @@ class Navegacion:
         return self.acceso_rack.get((x, y), set())
     
 
-    def camino(self, origen, destinos, ocupadas=(), algoritmo="astar"):
-        if algoritmo == "astar":
-            buscador = PathFinderV.a_estrella
-        elif algoritmo == "dijkstra":
-            buscador = PathFinderV.dijkstra
-        else:
-            raise ValueError(
-                "Algoritmo no válido. Usá 'astar' o 'dijkstra'."
-            )
+    def camino(self, origen, destinos, ocupadas=()):
+        """Busca el camino de menor costo utilizando Dijkstra."""
 
         if origen not in self.grafo:
             return None
@@ -188,7 +189,7 @@ class Navegacion:
         if origen in destinos:
             return []
 
-        destinos_validos = destinos.intersection(self.grafo.keys())
+        destinos_validos = destinos.intersection(self.grafo)
         destinos_validos -= ocupadas
 
         if not destinos_validos:
@@ -199,24 +200,13 @@ class Navegacion:
         if ocupadas:
             grafo_busqueda = GrafoFiltrado(self.grafo, ocupadas)
 
-        ordenados = sorted(
-            (
-                PathFinderV.manhattan(origen, destino),
-                destino
-            )
-            for destino in destinos_validos
-        )
-
         mejor_costo = float("inf")
         mejor_ruta = None
 
-        for distancia_minima, destino in ordenados:
-            if distancia_minima >= mejor_costo:
-                break
-
+        for destino in destinos_validos:
             self.busquedas += 1
 
-            costo, ruta, expandidos = buscador(
+            costo, ruta, expandidos = PathFinderV.dijkstra(
                 grafo_busqueda,
                 origen,
                 destino
