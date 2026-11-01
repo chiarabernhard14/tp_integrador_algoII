@@ -8,21 +8,20 @@ class Rack(RectangularElement):
         self._validate_dimensions(ancho, alto)
         super().__init__(ubicacion, ancho, alto)
         self.id = id
+        self.stacks = self.init_stacks()
 
     def _validate_dimensions(self,ancho,alto):
         if ancho != 2 and alto != 2:
             raise ValueError("Uno de los dos lados del rack (ancho o alto) debe tener valor 2.")
 
-    def init_stacks(self, not_acc=0):                             
+    def init_stacks(self):                             
         stacks = [[], 
                   []]
         mayor_dim = max(self.ancho, self.alto)
         for _ in range(mayor_dim):
-            if not_acc != 1:
-                stacks[0].append([])
+            stacks[0].append([])
+            stacks[1].append([])
             
-            if not_acc != 2:
-                stacks[1].append([])
         return stacks
 
     @property
@@ -78,7 +77,7 @@ class Rack(RectangularElement):
         
         raise ValueError("No se puede acceder al estante desde esa posición.")
     
-    def add_product(self, product):
+    def add_product_rack(self, product):
         if product is None:
             raise ValueError("No se puede agregar un producto nulo.")
         if not isinstance(product, Product):
