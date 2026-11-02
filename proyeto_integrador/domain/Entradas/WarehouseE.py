@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from domain.validation import validate_positive_int
 from .DoorE import Door
 from .DispatchZoneE import DispatchZone
@@ -21,7 +24,8 @@ class Warehouse:
         pickers=None,
         productos=None,
         pedidos=None,
-        graph=None
+        graph=None,
+        reduced_graph=None
     ):
         self.ancho_x = ancho_x
         self.largo_y = largo_y
@@ -42,6 +46,12 @@ class Warehouse:
         self.productos = productos if productos is not None else {}
         self.pedidos = pedidos if pedidos is not None else {}
         self.graph = graph if graph is not None else {}
+        self.reduced_graph = reduced_graph if reduced_graph is not None else {}
+        self._rack_cell = set()
+        self._aisle_cell = set()
+        self._dispatch_zone_cell = set() #No usar para la parte de visualización
+        self._puntos_acc=set()
+        self._next_auto_aisle_id = 0
 
     # Dimensiones
     @property
@@ -78,7 +88,7 @@ class Warehouse:
         if not isinstance(door, Door):
             raise TypeError("El elemento debe ser una instancia de Door.")
         if door.id in self._puertas:
-            raise ValueError(f"Ya existe una puerta con id '{door.id}'.")
+            raise ValueError("Ya existe una puerta con ese id.")
         self.validate_inside_warehouse(door.ubicacion)
         x, y = door.ubicacion
         if not (x == 0 or x == self._ancho_x - 1 or y == 0 or y == self._largo_y - 1):
@@ -111,21 +121,37 @@ class Warehouse:
         except KeyError:
             raise ValueError("La zona de despacho referencia una puerta que no existe en el warehouse.")
 
-        # La puerta debe ser adyacente a la zona (vecina, no estar dentro de ella)
+        # La puerta debe ser adyacente a la zona
         if door.ubicacion not in self._adjacent_cells_of(zone):
             raise ValueError(
                 "La puerta asignada debe estar en una celda adyacente a la zona de despacho."
             )
 
         cells = set(zone.cells())
-        if cells & self._occupied_by(self._racks):
+        if cells & self._rack_cell:
             raise ValueError("La zona de despacho se superpone con un rack.")
-        if cells & self._occupied_by(self._zonas_despacho):
+        if cells & self._dispatch_zone_cell:
             raise ValueError("La zona de despacho se superpone con otra.")
-        if cells & self._occupied_by(self._pasillos):
+        if cells & self._aisle_cell:
             raise ValueError("La zona de despacho se superpone con un pasillo.")
-    
+
+            
+        x0, y0 = zone.ubicacion
+        px, py = door.ubicacion
+        lado_puerta = set()
+        if py == y0 - 1:  # Puerta adyacente al borde inferior
+            lado_puerta = {(x, y0-1) for x in range(x0, x0 + zone.ancho)}
+        elif py == y0 + zone.alto:  # Puerta adyacente al borde superior
+            lado_puerta = {(x, y0 + zone.alto) for x in range(x0, x0 + zone.ancho)}
+        elif px == x0 - 1:  # Puerta adyacente al borde izquierdo
+            lado_puerta = {(x0-1, y) for y in range(y0, y0 + zone.alto)}
+        elif px == x0 + zone.ancho:  # Puerta adyacente al borde derecho
+            lado_puerta = {(x0 + zone.ancho, y) for y in range(y0, y0 + zone.alto)}
+
+
+        #NO USAR EL ATRIBUTO DISPATCH_ZONE_CELL EN REPRESENTACIÓN VISUAL 
         self._zonas_despacho[zone.id] = zone
+        self._dispatch_zone_cell.update(cells|lado_puerta)
 
     # Racks
     @property
@@ -148,11 +174,11 @@ class Warehouse:
         self.validate_element_bounds(rack)
 
         cells = set(rack.cells())
-        if cells & self._occupied_by(self._racks):
+        if cells & self._rack_cell:
             raise ValueError("El rack se superpone con otro rack.")
-        if cells & self._occupied_by(self._zonas_despacho):
+        if cells & self._dispatch_zone_cell:
             raise ValueError("El rack se superpone con una zona de despacho.")
-        if cells & self._occupied_by(self._pasillos):
+        if cells & self._aisle_cell:
             raise ValueError("El rack se superpone con un pasillo.")
 
         # Las caras de acceso del rack no pueden quedar fuera del warehouse
@@ -160,31 +186,30 @@ class Warehouse:
         x0, y0 = rack.ubicacion
         if rack.ancho == 2:
             if x0 - 1 < 0:
-                raise ValueError(f"El rack '{rack.id}' está pegado a la pared izquierda del almacén.")
+                raise ValueError("El rack está pegado a la pared izquierda del almacén.")
             if x0 + 2 >= self._ancho_x:
-                raise ValueError(f"El rack '{rack.id}' está pegado a la pared derecha del almacén.")
+                raise ValueError("El rack está pegado a la pared derecha del almacén.")
         else:  # rack.alto == 2
             if y0 - 1 < 0:
-                raise ValueError(f"El rack '{rack.id}' está pegado a la pared inferior del almacén.")
+                raise ValueError("El rack está pegado a la pared inferior del almacén.")
             if y0 + 2 >= self._largo_y:
-                raise ValueError(f"El rack '{rack.id}' está pegado a la pared superior del almacén.")
+                raise ValueError("El rack está pegado a la pared superior del almacén.")
 
         # Las celdas de acceso al rack (adyacentes a las caras que contienen productos)
         # no deben estar ocupadas por ningún otro elemento
         occupied = (
-            self._occupied_by(self._racks)
-            | self._occupied_by(self._zonas_despacho)
-            | self._occupied_by(self._pasillos)
+            self._rack_cell
+            | self._dispatch_zone_cell
+            | self._aisle_cell
         )
         blocked = self._rack_access_cells(rack) & occupied
         if blocked:
             raise ValueError(
-                f"Las celdas de acceso al rack '{rack.id}' están bloqueadas "
-                f"por otro elemento: {blocked}."
+                "Las celdas de acceso al rack están bloqueadas por otro elemento."
             )
 
         self._racks[rack.id] = rack
-
+        self._rack_cell.update(cells)
 
     # Pasillos
     @property
@@ -206,12 +231,15 @@ class Warehouse:
         self.validate_element_bounds(aisle)
 
         cells = set(aisle.cells())
-        if cells & self._occupied_by(self._racks):
+        if cells & self._rack_cell:
             raise ValueError("El pasillo no puede atravesar un rack.")
-        if cells & self._occupied_by(self._zonas_despacho):
+        if cells & self._dispatch_zone_cell:
             raise ValueError(f"El pasillo se superpone con una zona de despacho.")
+        if cells & self._aisle_cell:
+            raise ValueError("El pasillo se superpone con otro pasillo.")
 
         self._pasillos[aisle.id] = aisle
+        self._aisle_cell.update(cells)
 
     # Pickers
     @property
@@ -254,7 +282,8 @@ class Warehouse:
         
         try:
             rack = self._racks[product.rack_id]
-            rack.add_product(product)
+            rack.add_product_rack(product)
+            self._puntos_acc.update(product.acceso)
         except KeyError:
             raise ValueError("El producto no referencia un rack que exista en el warehouse.")
 
@@ -322,17 +351,25 @@ class Warehouse:
         return cells
 
     def _adjacent_cells_of(self, element):
-        """Devuelve el conjunto de celdas vecinas (4-conectadas) del elemento
-        que están dentro del warehouse y no pertenecen al elemento mismo."""
-        element_cells = set(element.cells())
+
+        x0, y0 = element.ubicacion
+        ancho, alto = element.ancho, element.alto
         neighbors = set()
-        for (x, y) in element_cells:
-            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                candidate = (x + dx, y + dy)
-                if candidate not in element_cells:
-                    cx, cy = candidate
-                    if 0 <= cx < self._ancho_x and 0 <= cy < self._largo_y:
-                        neighbors.add(candidate)
+
+        for x in range(x0, x0 + ancho):
+            if 0 <= x < self._ancho_x:
+                if 0 <= y0 - 1 < self._largo_y:
+                    neighbors.add((x, y0 - 1))
+                if 0 <= y0 + alto < self._largo_y:
+                    neighbors.add((x, y0 + alto))
+
+        for y in range(y0, y0 + alto):
+            if 0 <= y < self._largo_y:
+                if 0 <= x0 - 1 < self._ancho_x:
+                    neighbors.add((x0 - 1, y))
+                if 0 <= x0 + ancho < self._ancho_x:
+                    neighbors.add((x0 + ancho, y))
+
         return neighbors
 
     def _rack_access_cells(self, rack):
@@ -362,93 +399,282 @@ class Warehouse:
                     access.add(top)
         return access
 
- 
-
+    
     def generar_pasillos_faltantes(self):
-        """Crea pasillos de sentido 'AMBOS' para cubrir todas las celdas
-        que en este momento no estén ocupadas por ningún elemento.
+        """Genera pasillos con la partición voraz de mayor área.
 
-        Celdas contiguas que formen un rectángulo se agrupan en un único
-        pasillo.  El algoritmo es greedy: en cada iteración busca el
-        rectángulo libre más grande (por área) usando la técnica de
-        histograma + pila sobre toda la grilla, lo registra como pasillo
-        y lo marca como ocupado; repite hasta que no quedan celdas libres.
+        La partición avanza hasta la primera celda que queda fuera de cada
+        rectángulo, y la grilla marca como ocupadas las celdas ya cubiertas.
         """
         occupied = (
-            self._occupied_by(self._racks)
-            | self._occupied_by(self._zonas_despacho)
-            | self._occupied_by(self._pasillos)
+            self._rack_cell
+            | self._dispatch_zone_cell
+            | self._aisle_cell
         )
-
         W, H = self._ancho_x, self._largo_y
+        free = [[(x, y) not in occupied for x in range(W)] for y in range(H)]
 
-        # Grilla mutable: free[y][x] = True si la celda está libre
-        free = [[((x, y) not in occupied) for x in range(W)] for y in range(H)]
+        rectangles = self._particion_voraz_mixta(grid=free, W=W, H=H)
 
-        next_id = self._next_auto_aisle_id()
-
-        while True:
-            rect = self._largest_free_rectangle(free, W, H)
-            if rect is None:
-                break
-
-            x0, y0, ancho, alto = rect
-
-            # Marcar celdas como ocupadas
-            for dy in range(alto):
-                for dx in range(ancho):
-                    free[y0 + dy][x0 + dx] = False
-
-            aisle_id = f"PAS_AUTO_{next_id}"
-            next_id += 1
+        for x0, y0, ancho, alto in rectangles:
+            aisle_id = f"PAS_AUTO_{self._next_auto_aisle_id}"
             aisle = Aisle(aisle_id, (x0, y0), ancho, alto, "AMBOS")
             self.add_aisle(aisle)
+            self._next_auto_aisle_id += 1
 
-    def _next_auto_aisle_id(self):
-        prefix = "PAS_AUTO_"
-        max_n = -1
-        for pid in self._pasillos:
-            if pid.startswith(prefix):
-                try:
-                    n = int(pid[len(prefix):])
-                    if n > max_n:
-                        max_n = n
-                except ValueError:
-                    pass
-        return max_n + 1
-
-    def _largest_free_rectangle(self, free, W, H):
     
-        hist = [0] * W          # hist[x] = altura libre acumulada hasta la fila actual
-        best_area = 0
-        best_rect = None
+
+
+    def _particion_voraz_mixta(self, grid, W, H, on_step=None):
+        """Elige el rectángulo de mayor área desde la primera celda libre.
+
+        Modifica grid marcando las celdas usadas. Si se proporciona on_step,
+        lo llama con un evento cada vez que evalúa un candidato, cuando elige
+        el mejor y después de ocuparlo, para visualizar la ejecución sin
+        duplicar el algoritmo.
+        """
+        rects = []
 
         for y in range(H):
-            # Actualizar histograma
-            for x in range(W):
-                hist[x] = hist[x] + 1 if free[y][x] else 0
+            x = 0
+            while x < W:
+                if not grid[y][x]:
+                    x += 1
+                    continue
 
-            # Algoritmo de pila para el mayor rectángulo en el histograma
-            stack = []   # (x_inicio, altura)
-            for x in range(W + 1):
-                h = hist[x] if x < W else 0
-                x_start = x
-                while stack and stack[-1][1] > h:
-                    sx, sh = stack.pop()
-                    ancho = x - sx
-                    area = ancho * sh
-                    if area > best_area:
-                        best_area = area
-                        # y es la fila inferior; y0 = fila superior del rectángulo
-                        best_rect = (sx, y - sh + 1, ancho, sh)
-                    x_start = sx
-                stack.append((x_start, h))
+                x0 = x
+                ancho_comun = W - x0
+                mejor_ancho = 1
+                mejor_alto = 1
+                mejor_area = 1
 
-        return best_rect
+                yy = y
+                while yy < H and grid[yy][x0]:
+                    ancho_fila = 0
+                    while (
+                        x0 + ancho_fila < W
+                        and grid[yy][x0 + ancho_fila]
+                    ):
+                        ancho_fila += 1
+
+                    ancho_comun = min(ancho_comun, ancho_fila)
+                    alto = yy - y + 1
+                    area = ancho_comun * alto
+                    if area > mejor_area:
+                        mejor_area = area
+                        mejor_ancho = ancho_comun
+                        mejor_alto = alto
+
+                    if on_step is not None:
+                        on_step({
+                            "tipo": "candidato",
+                            "origen": (x0, y),
+                            "rectangulo": (x0, y, ancho_comun, alto),
+                            "area": area,
+                            "mejor_rectangulo": (x0, y, mejor_ancho, mejor_alto),
+                            "mejor_area": mejor_area,
+                        })
+
+                    yy += 1
+
+                rectangulo = (x0, y, mejor_ancho, mejor_alto)
+                if on_step is not None:
+                    on_step({
+                        "tipo": "elegido",
+                        "origen": (x0, y),
+                        "rectangulo": rectangulo,
+                        "area": mejor_area,
+                    })
+
+                for yy in range(y, y + mejor_alto):
+                    for xx in range(x0, x0 + mejor_ancho):
+                        grid[yy][xx] = False
+
+                if on_step is not None:
+                    on_step({
+                        "tipo": "ocupado",
+                        "origen": (x0, y),
+                        "rectangulo": rectangulo,
+                        "area": mejor_area,
+                    })
+
+                rects.append(rectangulo)
+                x = x0 + mejor_ancho
+
+        return rects
+
+    def build_reduced_graph_v2(self):
+        """Construye un grafo reducido con esquinas, accesos y proyecciones rectas."""
+        if not self.reduced_graph:
+            self.build_graph()
+        else:
+            return
+
+        full_graph = self.reduced_graph
+
+        directions = ((1, 0), (-1, 0), (0, 1), (0, -1))
+        aisle_by_cell = {
+            cell: aisle
+            for aisle in self._pasillos.values()
+            for cell in aisle.cells()
+        }
+        aisle_cells = set(aisle_by_cell)
+
+        def has_edge(origin, destination):
+            return any(neighbor == destination
+                       for neighbor, _ in full_graph.get(origin, ()))
+
+        def can_traverse(a, b):
+            return has_edge(a, b)
+
+        # Product.acceso puede ser una coordenada (x, y); _puntos_acc
+        # también puede contener coordenadas mal cargadas como valores separados.
+        product_access = {
+            tuple(product.acceso)
+            for product in self._productos.values()
+            if product.acceso is not None
+        }
+        if product_access:
+            self._puntos_acc = set(product_access)
+        else:
+            product_access = {
+                tuple(cell) for cell in self._puntos_acc
+                if isinstance(cell, (tuple, list)) and len(cell) == 2
+            }
+        vertices = {cell for cell in product_access if cell in aisle_cells}
+
+        corners = set()
+        for aisle in self._pasillos.values():
+            x0, y0 = aisle.ubicacion
+            x1, y1 = x0 + aisle.ancho - 1, y0 + aisle.alto - 1
+            corners.update(((x0, y0), (x0, y1), (x1, y0), (x1, y1)))
+        #corners &= aisle_cells
+        vertices.update(corners)
+
+        # Si una esquina toca otro pasillo, conserva ambos lados del contacto
+        # cuando el grafo permite atravesarlo en al menos uno de los sentidos.
+        corner_contacts = set()
+        for corner in corners:
+            for dx, dy in directions:
+                neighbor = (corner[0] + dx, corner[1] + dy)
+                if (neighbor in aisle_cells
+                        and aisle_by_cell[neighbor] is not aisle_by_cell[corner]
+                        and (has_edge(corner, neighbor)
+                             or has_edge(neighbor, corner))):
+                    corner_contacts.update((corner, neighbor))
+        vertices.update(corner_contacts)
+        """"
+        # Los accesos a despacho son las celdas vecinas transitables a la zona.
+        for zone in self._zonas_despacho.values():
+            x0, y0 = zone.ubicacion
+            x1, y1 = x0 + zone.ancho - 1, y0 + zone.alto - 1
+            boundary = (
+                [(x, y0 - 1) for x in range(x0, x1 + 1)]
+                + [(x, y1 + 1) for x in range(x0, x1 + 1)]
+                + [(x0 - 1, y) for y in range(y0, y1 + 1)]
+                + [(x1 + 1, y) for y in range(y0, y1 + 1)]
+            )
+            vertices.update(cell for cell in boundary if cell in aisle_cells)"""
+
+        # Proyecta esquinas y accesos en línea recta por cada pasillo. Al
+        # cruzar a otro pasillo conserva ambos extremos del tramo de unión.
+        pending = list(vertices)
+        processed = set()
+        while pending:
+            source = pending.pop()
+            if source in processed:
+                continue
+            processed.add(source)
+            for dx, dy in directions:
+                current = source
+                current_aisle = aisle_by_cell[source]
+                while True:
+                    nxt = (current[0] + dx, current[1] + dy)
+                    nxt_aisle = aisle_by_cell.get(nxt)
+                    if nxt_aisle is None or not can_traverse(current, nxt):
+                        break
+                    if nxt_aisle is not current_aisle:
+                        for projected in (current, nxt):
+                            if projected not in vertices:
+                                vertices.add(projected)
+                                pending.append(projected)
+                        current_aisle = nxt_aisle
+                    current = nxt
+                if current != source and current not in vertices:
+                    vertices.add(current)
+                    pending.append(current)
+
+        # Proyecta accesos de producto al otro extremo cuando las aristas
+        # dirigidas permiten recorrer ese tramo recto.
+        for access in product_access:
+            if access not in aisle_cells:
+                continue
+            product = next((p for p in self._productos.values()
+                            if p.acceso is not None and tuple(p.acceso) == access), None)
+            rack = (product.rack or self._racks.get(product.rack_id)) if product else None
+            if rack is None:
+                continue
+            x0, y0 = rack.ubicacion
+            dx, dy = ((-1 if access[0] < x0 else 1, 0) if rack.ancho == 2
+                      else (0, -1 if access[1] < y0 else 1))
+            current = access
+            while True:
+                nxt = (current[0] + dx, current[1] + dy)
+                if nxt not in aisle_cells or not can_traverse(current, nxt):
+                    break
+                current = nxt
+            if current != access:
+                if current not in vertices:
+                    vertices.add(current)
+                    pending.append(current)
+
+        # Las proyecciones opuestas de productos también pueden habilitar
+        # nuevas proyecciones entre pasillos; procesa las que aún quedaron pendientes.
+        while pending:
+            source = pending.pop()
+            if source in processed:
+                continue
+            processed.add(source)
+            for dx, dy in directions:
+                current = source
+                current_aisle = aisle_by_cell[source]
+                while True:
+                    nxt = (current[0] + dx, current[1] + dy)
+                    nxt_aisle = aisle_by_cell.get(nxt)
+                    if nxt_aisle is None or not can_traverse(current, nxt):
+                        break
+                    if nxt_aisle is not current_aisle:
+                        for projected in (current, nxt):
+                            if projected not in vertices:
+                                vertices.add(projected)
+                                pending.append(projected)
+                        current_aisle = nxt_aisle
+                    current = nxt
+
+        reduced = {vertex: [] for vertex in vertices}
+        edge_paths = {}
+        for origin in vertices:
+            for dx, dy in directions:
+                current = origin
+                path = [origin]
+                while True:
+                    nxt = (current[0] + dx, current[1] + dy)
+                    if not has_edge(current, nxt):
+                        break
+                    path.append(nxt)
+                    current = nxt
+                    if current in vertices:
+                        reduced[origin].append((current, len(path) - 1))
+                        edge_paths[(origin, current)] = tuple(path)
+                        break
+       
+        self.reduced_graph = reduced
+        
 
     def build_graph(self):
+        #cant_pasillos=self.generar_pasillos_faltantes()
+        self.generar_pasillos_faltantes()
         aisle_cells = self._occupied_by(self._pasillos)
-        zones_perimeter_cells = self._zones_perimeter(self._zonas_despacho)
         for a in self._pasillos.values():
             vertices = a.cells()
 
@@ -465,53 +691,15 @@ class Warehouse:
 
                 if a.sentido != "O" and (x + 1, y) in aisle_cells:  # ir al E
                     self._agregar_arista((x, y), (x + 1, y), 1)
+        #return cant_pasillos
     
     def _agregar_arista(self, origen, destino, distancia=1):
         self.graph.setdefault(origen, [])
         self.graph.setdefault(destino, [])
+        self.reduced_graph.setdefault(origen, [])
+        self.reduced_graph.setdefault(destino, [])
         
         self.graph[origen].insert(0, (destino, distancia))
-            
+        self.reduced_graph[origen].insert(0, (destino, distancia))
 
-    """
-    def build_graph(self):
-        aisle_cells = self._occupied_by(self._pasillos)
-        for a in self._pasillos.values():
-            x0, y0 = a.ubicacion
-            y_sup = y0 + a.alto - 1
-            x_der = x0 + a.ancho - 1
-
-            if a.sentido != "N":  # se puede ir al S
-                for i in range(a.ancho):
-                    x = x0 + i
-                    fin = y0 - 1 if (x, y0 - 1) in aisle_cells else y0
-                    self.linea_vertical(x, y_sup, fin, -1)
-
-            if a.sentido != "S":  # se puede ir al N
-                for i in range(a.ancho):
-                    x = x0 + i
-                    fin = y_sup + 1 if (x, y_sup + 1) in aisle_cells else y_sup
-                    self.linea_vertical(x, y0, fin, 1)
-
-            if a.sentido != "E":  # se puede ir al O
-                for j in range(a.alto):
-                    y = y0 + j
-                    fin = x0 - 1 if (x0 - 1, y) in aisle_cells else x0
-                    self.linea_horizontal(y, x_der, fin, -1)
-
-            if a.sentido != "O":  # se puede ir al E
-                for j in range(a.alto):
-                    y = y0 + j
-                    fin = x_der + 1 if (x_der + 1, y) in aisle_cells else x_der
-                    self.linea_horizontal(y, x0, fin, 1)
-
-    def linea_vertical(self, x, inicio, fin, incr):
-        for y in range(inicio, fin, incr):
-            self._agregar_arista((x, y), (x, y + incr))
-
-    def linea_horizontal(self, y, inicio, fin, incr):
-        for x in range(inicio, fin, incr):
-            self._agregar_arista((x, y), (x + incr, y))
-    """
-
-    
+  
