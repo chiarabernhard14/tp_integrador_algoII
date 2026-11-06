@@ -1,5 +1,4 @@
 """Punto de entrada: python main.py [--escenario ruta.json]"""
-
 import argparse
 import ctypes
 import importlib
@@ -20,7 +19,11 @@ for ruta in (VISUALIZACION, RAIZ):
 
 # Los imports del proyecto van después de armar sys.path.
 from simulation.simulationV.ScenarioV import generar_escenario, validar_escenario  # noqa: E402
-from simulation.simulationV.PersistenceV import cargar_escenario        # noqa: E402
+from simulation.simulationV.PersistenceV import (                        # noqa: E402
+    cargar_escenario,
+    cargar_partida,
+    ruta_autoguardado,
+)
 
 
 def main():
@@ -29,6 +32,7 @@ def main():
     args = parser.parse_args()
 
     datos_iniciales = None
+    partida_guardada = None
     if args.escenario:
         try:
             datos_iniciales = cargar_escenario(args.escenario)
@@ -36,6 +40,13 @@ def main():
         except ValueError as error:
             print(f"No se pudo cargar el escenario: {error}")
             datos_iniciales = None
+    else:
+        ruta = ruta_autoguardado()
+        if ruta.is_file():
+            try:
+                datos_iniciales, partida_guardada = cargar_partida(ruta)
+            except ValueError as error:
+                print(f"No se pudo restaurar la última partida: {error}")
 
     if datos_iniciales is None:
         datos_iniciales = generar_escenario()
@@ -43,7 +54,7 @@ def main():
     # El paquete se deduce de la carpeta donde estén estos archivos (real, prueba, etc.).
     paquete = f"visualization.{os.path.basename(CARPETA)}"
     App = importlib.import_module(f"{paquete}.app").App
-    App(datos_iniciales).correr()
+    App(datos_iniciales, partida_guardada=partida_guardada).correr()
     sys.exit(0)
 
 

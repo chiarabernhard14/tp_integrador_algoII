@@ -20,7 +20,7 @@ from .widgets import Alerta
 class App:
 
    
-    def __init__(self, datos, waves=None, generador_waves=None):
+    def __init__(self, datos, waves=None, generador_waves=None, partida_guardada=None):
         pygame.init()
         pygame.display.set_caption("Wave Picking - Simulacion")
         self.pantalla = pygame.display.set_mode((cfg.ANCHO, cfg.ALTO))
@@ -31,10 +31,14 @@ class App:
         self.alerta = Alerta(self.fuentes.alerta_titulo, self.fuentes.alerta_texto)
 
         self.sesion = Sesion(datos, waves=waves, generador_waves=generador_waves)
+        if partida_guardada is not None:
+            self.sesion.usar_partida(datos, partida_guardada)
         self.anim = Animacion()
         self.vista = VistaMapa(self.pincel, self.fuentes, self.sesion, self.anim)
         self.panel = PanelLateral(self.pincel, self.fuentes, self.sesion, self.anim)
         self.generador = None
+        if partida_guardada is not None:
+            self.alerta.mostrar("Listo", "Se restauró la última partida guardada.")
 
     def _refrescar_vista(self):
         """Tras cambiar la simulación: nuevo tamaño de mapa y animación en cero."""
@@ -52,7 +56,11 @@ class App:
             self.alerta.mostrar(type(error).__name__, str(error))
 
     def _ejecutar(self, nombre):
-        if nombre == "generar":
+        if nombre == "algoritmo_a_estrella":
+            self._seleccionar_algoritmo_asignacion("a_estrella")
+        elif nombre == "algoritmo_dijkstra":
+            self._seleccionar_algoritmo_asignacion("dijkstra")
+        elif nombre == "generar":
             self._abrir_generador()
         elif nombre == "cargar_escenario":
             self._cargar_escenario()
@@ -65,6 +73,7 @@ class App:
         elif nombre == "iniciar":
             self.sesion.iniciar()
             self._refrescar_vista()
+            self._guardar_autopartida()
         elif nombre == "pausar":
             self.sesion.pausar()
         elif nombre == "continuar":
@@ -72,6 +81,7 @@ class App:
         elif nombre == "reiniciar":
             self.sesion.reiniciar()
             self._refrescar_vista()
+            self._guardar_autopartida()
         elif nombre == "paso":
             self.sesion.pedir_paso()
         elif nombre == "vel_menos":
@@ -93,6 +103,7 @@ class App:
             return
         self.sesion.cargar_escenario(ruta)
         self._refrescar_vista()
+        self._guardar_autopartida()
 
     def _guardar_escenario(self):
         self.sesion.pausar()
@@ -109,6 +120,7 @@ class App:
             return
         self.sesion.cargar_partida(ruta)
         self._refrescar_vista()
+        self._guardar_autopartida()
 
     def _guardar_partida(self):
         self.sesion.pausar()
@@ -129,6 +141,7 @@ class App:
         self.sesion.generar(self.generador.valores_generador())
         self.generador = None
         self._refrescar_vista()
+        self._guardar_autopartida()
         self.alerta.mostrar("Listo", "Escenario generado.")
 
     def _validar_editor(self):
@@ -145,8 +158,19 @@ class App:
         cantidad = self.sesion.usar_escenario_editado(datos)
         self.generador = None
         self._refrescar_vista()
+        self._guardar_autopartida()
         self.alerta.mostrar("Listo", f"Escenario cargado. Se generaron {cantidad} pedidos "
                                      f"al azar con los productos del mapa.")
+
+    def _seleccionar_algoritmo_asignacion(self, algoritmo):
+        cambio = self.sesion.seleccionar_algoritmo_asignacion(algoritmo)
+        if cambio:
+            self._refrescar_vista()
+            self._guardar_autopartida()
+            nombre = "A*" if algoritmo == "a_estrella" else "Dijkstra"
+            self.alerta.mostrar(
+                "Listo", f"La asignación de pickers usará {nombre}."
+            )
 
     def _evento_generador(self, ev):
         accion = self.generador.evento(ev)
@@ -168,8 +192,12 @@ class App:
         if self.sesion.debe_avanzar():
             self.anim.arrancar(self.sesion.posiciones())
             self.sesion.dar_paso()
+            self._guardar_autopartida()
             if self.sesion.sim.terminada:
                 self._avisar_fin()
+
+    def _guardar_autopartida(self):
+        self.sesion.guardar_autopartida()
 
     def _avisar_fin(self):
         bloqueados = []
@@ -241,6 +269,11 @@ class App:
             self.alerta.actualizar(dt)
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
+                    self.sesion.pausar()
+                    try:
+                        self._guardar_autopartida()
+                    except ValueError as error:
+                        print(f"No se pudo guardar la última partida: {error}")
                     activo = False
                 else:
                     self._evento(ev)

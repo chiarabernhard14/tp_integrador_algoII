@@ -1,13 +1,25 @@
 import json
 import os
+from pathlib import Path
 
 from .ScenarioV import validar_escenario
 
 VERSION_PARTIDA = 1
-CLAVES_ESTADO = ("tick", "terminada", "pickers", "pedidos")
+CLAVES_ESTADO = ("tick", "terminada", "pickers", "waves")
 CLAVES_PICKER = ("id", "posicion", "ruta", "estado", "trail",
                  "recogidos", "pendientes", "objetivo")
-CLAVES_PEDIDO = ("id", "estado")
+CLAVES_WAVE = ("id", "estado", "productos")
+
+
+def ruta_autoguardado():
+    """Ruta fija del checkpoint automático, fuera de la carpeta del proyecto."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        carpeta = Path(base) if base else Path.home() / "AppData" / "Local"
+    else:
+        base = os.environ.get("XDG_STATE_HOME")
+        carpeta = Path(base) if base else Path.home() / ".local" / "state"
+    return carpeta / "WavePicking" / "ultima_partida.json"
 
 
 def guardar_escenario(ruta, datos):
@@ -68,8 +80,8 @@ def _validar_estado(estado):
         if clave not in estado:
             raise ValueError(f"El estado de la simulación está incompleto: falta '{clave}'.")
 
-    if not isinstance(estado["pickers"], list) or not isinstance(estado["pedidos"], list):
-        raise ValueError("El estado de la simulación está dañado: 'pickers' y 'pedidos' deben ser listas.")
+    if not isinstance(estado["pickers"], list) or not isinstance(estado["waves"], list):
+        raise ValueError("El estado de la simulación está dañado: 'pickers' y 'waves' deben ser listas.")
 
     for picker in estado["pickers"]:
         if not isinstance(picker, dict):
@@ -78,12 +90,12 @@ def _validar_estado(estado):
             if clave not in picker:
                 raise ValueError(f"Un picker guardado está incompleto: falta '{clave}'.")
 
-    for pedido in estado["pedidos"]:
-        if not isinstance(pedido, dict):
-            raise ValueError("El estado de la simulación está dañado: un pedido no es válido.")
-        for clave in CLAVES_PEDIDO:
-            if clave not in pedido:
-                raise ValueError(f"Un pedido guardado está incompleto: falta '{clave}'.")
+    for wave in estado["waves"]:
+        if not isinstance(wave, dict):
+            raise ValueError("El estado de la simulación está dañado: una wave no es válida.")
+        for clave in CLAVES_WAVE:
+            if clave not in wave:
+                raise ValueError(f"Una wave guardada está incompleta: falta '{clave}'.")
 
 
 def _escribir_json(ruta, contenido):

@@ -1,4 +1,5 @@
 from simulation.simulationV.SimutionV import Simulacion
+from simulation.simulationV.AsignadorPickersV import ALGORITMOS_DISTANCIA
 from simulation.simulationV.ScenarioV import (
     generar_escenario,
     generar_pedidos,
@@ -9,24 +10,31 @@ from simulation.simulationV.PersistenceV import (
     cargar_escenario,
     guardar_partida,
     cargar_partida,
+    ruta_autoguardado,
 )
 
 
 class Sesion:
 
-    def __init__(self, datos, waves=None, generador_waves=None):
+    def __init__(
+        self, datos, waves=None, generador_waves=None,
+        algoritmo_asignacion="a_estrella",
+    ):
         """
         - waves: lista de waves ya generadas por el módulo de tu compañera.
-        - generador_waves: función opcional fn(datos) -> list[wave] de tu compañera
-          para recalcular waves automáticamente al cargar/generar otro escenario en la UI.
+        - generador_waves: adaptador opcional fn(datos) -> list[wave]. Si no se
+          proporciona, Simulacion llama al GeneradorWaves del proyecto con los
+          pedidos del Warehouse.
         """
         self.generador_waves = generador_waves
+        self.algoritmo_asignacion = algoritmo_asignacion
         self.usar_datos(datos, waves)
 
     # ---------- estado ----------
 
     def usar_simulacion(self, sim):
         self.sim = sim
+        self.algoritmo_asignacion = sim.algoritmo_asignacion
         self.capacidades = {}
         for picker in self.sim.pickers:
             # Lee capacidad desde EstadoPicker o directamente desde la entidad Picker
@@ -101,47 +109,46 @@ class Sesion:
         validar_escenario(datos)
 
     def _obtener_waves(self, datos, waves=None):
-        """Usa la lista recibida, llama al módulo de Wave Manager o arma waves provisorias."""
+        """Usa waves explícitas o un generador externo si la sesión lo recibió.
+
+        Si devuelve None, Simulacion invoca el generador del proyecto usando
+        los pedidos del Warehouse que ya cargó.
+        """
         if waves is not None:
             return waves
         if self.generador_waves is not None:
             return self.generador_waves(datos)
-        return self._waves_provisorias(datos)
-
-    def _waves_provisorias(self, datos):
-        """Fallback por si se abre un escenario desde la UI sin generador_waves conectado."""
-        pickers = [p["id"] for p in datos.get("pickers", [])]
-        if not pickers:
-            raise ValueError("El escenario no tiene pickers definidos.")
-
-        pedidos = sorted(
-            datos.get("pedidos", []),
-            key=lambda ped: ped.get("prioridad", 1),
-            reverse=True,
-        )
-        max_ped = datos.get("configuracion", {}).get("wave_max_pedidos", 3)
-
-        waves = []
-        for idx in range(0, len(pedidos), max_ped):
-            grupo = pedidos[idx : idx + max_ped]
-            productos = []
-            for ped in grupo:
-                for it in ped.get("items", []):
-                    productos.append({
-                        "producto_id": it["producto_id"],
-                        "cantidad": it["cantidad"],
-                    })
-            waves.append({
-                "id": f"W_{idx // max_ped + 1:02d}",
-                "picker": pickers[(idx // max_ped) % len(pickers)],
-                "productos": productos,
-            })
-        return waves
+        return None
 
     def usar_datos(self, datos, waves=None):
         validar_escenario(datos)
         waves_listas = self._obtener_waves(datos, waves)
-        self.usar_simulacion(Simulacion(datos, waves_listas))
+        self.usar_simulacion(
+            Simulacion(
+                datos,
+                waves_listas,
+                algoritmo_asignacion=self.algoritmo_asignacion,
+            )
+        )
+
+    def seleccionar_algoritmo_asignacion(self, algoritmo):
+        """Cambia A* / Dijkstra antes del primer paso y recalcula la ronda inicial."""
+        if algoritmo not in ALGORITMOS_DISTANCIA:
+            raise ValueError(
+                f"Algoritmo de asignación desconocido: {algoritmo}. "
+                f"Opciones: {', '.join(ALGORITMOS_DISTANCIA)}."
+            )
+        if algoritmo == self.algoritmo_asignacion:
+            return False
+        if self.sim.tick > 0:
+            raise ValueError(
+                "Para cambiar el algoritmo de asignación, reiniciá la simulación "
+                "y elegilo antes de avanzar."
+            )
+        waves = self.sim.waves_entrada
+        self.algoritmo_asignacion = algoritmo
+        self.usar_datos(self.sim.datos, waves)
+        return True
 
     def usar_escenario_editado(self, datos, cantidad_pedidos=8, max_items=4):
         completo = dict(datos)
@@ -162,15 +169,21 @@ class Sesion:
 
     def cargar_partida(self, ruta):
         datos, estado = cargar_partida(ruta)
+        self.usar_partida(datos, estado)
+
+    def usar_partida(self, datos, estado):
+        """Restaura una instantánea ya leída, incluida la configuración guardada."""
         waves_guardadas = [
             {
                 "id": w["id"],
-                "picker": w["picker"],
                 "productos": w["productos"],
             }
             for w in estado.get("waves", [])
         ]
-        sim = Simulacion(datos, waves_guardadas)
+        algoritmo = estado.get("algoritmo_asignacion", self.algoritmo_asignacion)
+        sim = Simulacion(
+            datos, waves_guardadas, algoritmo_asignacion=algoritmo
+        )
         try:
             sim.restaurar(estado)
         except (KeyError, IndexError) as error:
@@ -179,3 +192,6 @@ class Sesion:
 
     def guardar_partida(self, ruta):
         guardar_partida(ruta, self.sim)
+
+    def guardar_autopartida(self):
+        guardar_partida(ruta_autoguardado(), self.sim)

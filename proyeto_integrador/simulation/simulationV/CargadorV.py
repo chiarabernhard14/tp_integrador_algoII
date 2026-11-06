@@ -1,335 +1,118 @@
+"""Construye el modelo de dominio usado por la simulación desde un escenario."""
+
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from domain.Entradas.DoorE import Door
-from domain.Entradas.DispatchZoneE import DispatchZone
-from domain.Entradas.RackE import Rack
+
 from domain.Entradas.AisleE import Aisle
-from domain.Entradas.PickerE import Picker
-from domain.Entradas.ProductE import Product
+from domain.Entradas.DispatchZoneE import DispatchZone
+from domain.Entradas.DoorE import Door
 from domain.Entradas.OrderE import Order
 from domain.Entradas.OrderItemE import OrderItem
+from domain.Entradas.PickerE import Picker
+from domain.Entradas.ProductE import Product
+from domain.Entradas.RackE import Rack
 from domain.Entradas.WarehouseE import Warehouse
-import json
+
+
+def _nivel_producto(datos_producto):
+    return datos_producto["rack_id"], datos_producto["ubicacion"]["z"]
 
 
 def cargar_warehouse(datos):
-    datos_wh = datos["warehouse"]
-    dim = datos_wh["dimensiones"]
+    """Convierte los datos serializados del escenario en objetos de dominio."""
+    datos_warehouse = datos["warehouse"]
+    dimensiones = datos_warehouse["dimensiones"]
+    warehouse = Warehouse(dimensiones["ancho_x"], dimensiones["largo_y"])
 
-    warehouse = Warehouse(dim["ancho_x"], dim["largo_y"])
-
-    # Puertas
-    for d in datos_wh["puertas"]:
-        u = d["ubicacion"]
+    for dato in datos_warehouse["puertas"]:
+        ubicacion = dato["ubicacion"]
         warehouse.add_door(
-            Door(d["id"], d["tipo"], (u["x"], u["y"]))
+            Door(dato["id"], dato["tipo"], (ubicacion["x"], ubicacion["y"]))
         )
 
-    # Zonas de despacho
-    for d in datos_wh["zonas_despacho"]:
-        u = d["ubicacion"]
+    for dato in datos_warehouse["zonas_despacho"]:
+        ubicacion = dato["ubicacion"]
         warehouse.add_dispatch_zone(
             DispatchZone(
-                d["id"],
-                d["puerta_id"],
-                (u["x"], u["y"]),
-                d["ancho"],
-                d["alto"],
-                d["peso_max_kg"]
+                dato["id"],
+                dato["puerta_id"],
+                (ubicacion["x"], ubicacion["y"]),
+                dato["ancho"],
+                dato["alto"],
+                dato["peso_max_kg"],
             )
         )
 
-    # Racks
-    for d in datos_wh["racks"]:
-        u = d["ubicacion"]
+    for dato in datos_warehouse["racks"]:
+        ubicacion = dato["ubicacion"]
         warehouse.add_rack(
-            Rack(d["id"], (u["x"], u["y"]), d["ancho"], d["alto"])
+            Rack(
+                dato["id"],
+                (ubicacion["x"], ubicacion["y"]),
+                dato["ancho"],
+                dato["alto"],
+            )
         )
 
-    # Pasillos
-    for d in datos_wh["pasillos"]:
-        u = d["ubicacion"]
+    for dato in datos_warehouse["pasillos"]:
+        ubicacion = dato["ubicacion"]
         warehouse.add_aisle(
             Aisle(
-                d["id"],
-                (u["x"], u["y"]),
-                d["ancho"],
-                d["alto"],
-                d["sentido"]
+                dato["id"],
+                (ubicacion["x"], ubicacion["y"]),
+                dato["ancho"],
+                dato["alto"],
+                dato["sentido"],
             )
         )
 
-    # Pickers
-    for d in datos["pickers"]:
-        u = d["posicion_inicial"]
+    for dato in datos["pickers"]:
+        ubicacion = dato["posicion_inicial"]
         warehouse.add_picker(
             Picker(
-                d["id"],
-                (u["x"], u["y"]),
-                d["capacidad_carga_kg"],
-                current_route=[]
+                dato["id"],
+                (ubicacion["x"], ubicacion["y"]),
+                dato["capacidad_carga_kg"],
+                current_route=[],
             )
         )
 
-    # Productos: primero los niveles inferiores de cada rack
-    productos_ordenados = sorted(
-        datos["productos"],
-        key=lambda d: (d["rack_id"], d["ubicacion"]["z"])
-    )
-
-    for d in productos_ordenados:
-        u = d["ubicacion"]
-
+    # Los productos se insertan desde los niveles inferiores de cada rack.
+    for dato in sorted(datos["productos"], key=_nivel_producto):
+        ubicacion = dato["ubicacion"]
         warehouse.add_product(
             Product(
-                d["id"],
-                d["nombre"],
-                d["rack_id"],
-                (u["x"], u["y"], u["z"]),
-                peso_kg=d["peso_kg"],
+                dato["id"],
+                dato["nombre"],
+                dato["rack_id"],
+                (ubicacion["x"], ubicacion["y"], ubicacion["z"]),
+                peso_kg=dato["peso_kg"],
                 acceso=None,
-                stock=d["cantidad_disponible"]
+                stock=dato["cantidad_disponible"],
             )
         )
 
-    # Pedidos
-    for d in datos["pedidos"]:
+    for dato in datos["pedidos"]:
         items = []
-
-        for it in d["items"]:
-            producto_id = it["producto_id"].upper()
+        for item in dato["items"]:
+            producto_id = item["producto_id"].upper()
             producto = warehouse.productos.get(producto_id)
-
             if producto is None:
                 raise ValueError(
-                    f"El pedido {d['id']} referencia un producto "
-                    f"inexistente: {it['producto_id']}."
+                    f"El pedido {dato['id']} referencia un producto "
+                    f"inexistente: {item['producto_id']}."
                 )
-
             items.append(
                 OrderItem(
-                    cantidad=it["cantidad"],
+                    cantidad=item["cantidad"],
                     producto_id=producto_id,
-                    producto=producto
+                    producto=producto,
                 )
             )
-
         warehouse.add_order(
-            Order(d["id"], d["prioridad"], d["estado"], items=items)
+            Order(dato["id"], dato["prioridad"], dato["estado"], items=items)
         )
 
     return warehouse
-
-
-"""
-from domain.Entradas.DoorE import Door
-from domain.Entradas.DispatchZoneE import DispatchZone
-from domain.Entradas.RackE import Rack
-from domain.Entradas.AisleE import Aisle
-from domain.Entradas.PickerE import Picker
-from domain.Entradas.ProductE import Product
-from domain.Entradas.OrderE import Order
-from domain.Entradas.OrderItemE import OrderItem
-from domain.Entradas.WarehouseE import Warehouse
-
-class WarehouseEscenario(Warehouse):
-
-    def add_product(self, product):
-        if not isinstance(product, Product):
-            raise TypeError("El elemento debe ser una instancia de Product.")
-        if product.id in self._productos:
-            raise ValueError("Ya existe un producto con el mismo id.")
-        rack = self._racks.get(product.rack_id)
-        if rack is None:
-            raise ValueError("El producto no referencia un rack que exista en el warehouse.")
-
-        x, y, z = product.ubicacion
-        pila = rack.acc_stack(x, y)
-        if z <= len(pila):
-            raise ValueError(f"{product.id}: la posicion ({x},{y},{z}) ya esta ocupada.")
-        if z > len(pila) + 1:
-            product.ubicacion = (x, y, len(pila) + 1)
-
-        pila.insert(0, product)
-        product.rack = rack
-        self._productos[product.id] = product
-
-def _z_del_producto(datos_producto):
-    return datos_producto["ubicacion"]["z"]
-def cargar_warehouse(datos):
-    datos_wh = datos["warehouse"]
-    dim = datos_wh["dimensiones"]
-    warehouse = Warehouse(dim["ancho_x"], dim["largo_y"])
-
-    for d in datos_wh["puertas"]:
-        u = d["ubicacion"]
-        warehouse.add_door(Door(d["id"], d["tipo"], (u["x"], u["y"])))
-
-    for d in datos_wh["zonas_despacho"]:
-        u = d["ubicacion"]
-        warehouse.add_dispatch_zone(DispatchZone(
-            d["id"], d["puerta_id"], (u["x"], u["y"]),
-            d["ancho"], d["alto"], d["peso_max_kg"]))
-
-    for d in datos_wh["racks"]:
-        u = d["ubicacion"]
-        warehouse.add_rack(Rack(d["id"], (u["x"], u["y"]), d["ancho"], d["alto"]))
-
-    for d in datos_wh["pasillos"]:
-        u = d["ubicacion"]
-        warehouse.add_aisle(Aisle(
-            d["id"], (u["x"], u["y"]), d["ancho"], d["alto"], d["sentido"]))
-
-    for d in datos["pickers"]:
-        u = d["posicion_inicial"]
-        warehouse.add_picker(Picker(
-            d["id"], (u["x"], u["y"]), d["capacidad_carga_kg"], current_route=[]))
-
-    for d in sorted(datos["productos"], key=_z_del_producto):
-        u = d["ubicacion"]
-        warehouse.add_product(Product(
-            d["id"], d["nombre"], d["rack_id"], (u["x"], u["y"], u["z"]),
-            acceso=None, stock=d["cantidad_disponible"], peso_kg=d["peso_kg"]))
-
-    for d in datos["pedidos"]:
-        items = []
-        for it in d["items"]:
-            producto = warehouse.productos.get(it["producto_id"].upper())
-            if producto is None:
-                raise ValueError(
-                    f"El pedido {d['id']} referencia un producto inexistente: {it['producto_id']}.")
-            items.append(OrderItem(
-                cantidad=it["cantidad"], producto_id=it["producto_id"], producto=producto))
-        warehouse.add_order(Order(d["id"], d["prioridad"], d["estado"], items=items))
-
-    return warehouse"""
-
-if __name__ == "__main__":
-    import json
-from time import perf_counter
-
-ruta = "proyeto_integrador/domain/Entradas/escenario_grande.json"
-
-with open(ruta, encoding="utf-8") as archivo:
-    datos = json.load(archivo)
-
-def medir(nombre, cargar_parte):
-    inicio = perf_counter()
-    resultado = cargar_parte()
-    tiempo = perf_counter() - inicio
-    print(f"{nombre}: {tiempo * 1000:.3f} ms")
-    return resultado
-
-datos_wh = datos["warehouse"]
-dimensiones = datos_wh["dimensiones"]
-
-warehouse = medir(
-    "Crear warehouse",
-    lambda: Warehouse(
-        dimensiones["ancho_x"],
-        dimensiones["largo_y"],
-    ),
-)
-
-medir("Cargar puertas", lambda: [
-    warehouse.add_door(
-        Door(d["id"], d["tipo"], (d["ubicacion"]["x"], d["ubicacion"]["y"]))
-    ) for d in datos_wh["puertas"]
-])
-
-medir("Cargar zonas de despacho", lambda: [
-    warehouse.add_dispatch_zone(DispatchZone(
-        d["id"],
-        d["puerta_id"],
-        (d["ubicacion"]["x"], d["ubicacion"]["y"]),
-        d["ancho"],
-        d["alto"],
-        d["peso_max_kg"],
-    )) for d in datos_wh["zonas_despacho"]
-])
-
-medir("Cargar racks", lambda: [
-    warehouse.add_rack(Rack(
-        d["id"],
-        (d["ubicacion"]["x"], d["ubicacion"]["y"]),
-        d["ancho"],
-        d["alto"],
-    )) for d in datos_wh["racks"]
-])
-
-medir("Cargar pasillos", lambda: [
-    warehouse.add_aisle(Aisle(
-        d["id"],
-        (d["ubicacion"]["x"], d["ubicacion"]["y"]),
-        d["ancho"],
-        d["alto"],
-        d["sentido"],
-    )) for d in datos_wh["pasillos"]
-])
-
-medir("Cargar pickers", lambda: [
-    warehouse.add_picker(Picker(
-        d["id"],
-        (d["posicion_inicial"]["x"], d["posicion_inicial"]["y"]),
-        d["capacidad_carga_kg"],
-        current_route=[],
-    )) for d in datos["pickers"]
-])
-
-def _z_del_producto(datos_producto):
-    return datos_producto["ubicacion"]["z"]
-
-
-def cargar_productos():
-    for d in sorted(datos["productos"], key=_z_del_producto):
-        u = d["ubicacion"]
-        warehouse.add_product(Product(
-            d["id"],
-            d["nombre"],
-            d["rack_id"],
-            (u["x"], u["y"], u["z"]),
-            acceso=None,
-            stock=d["cantidad_disponible"],
-            peso_kg=d["peso_kg"],
-        ))
-
-medir("Cargar productos", cargar_productos)
-
-def cargar_pedidos():
-    for d in datos["pedidos"]:
-        items = []
-        for it in d["items"]:
-            producto = warehouse.productos.get(it["producto_id"].upper())
-            if producto is None:
-                raise ValueError(
-                    f"El pedido {d['id']} referencia un producto inexistente: "
-                    f"{it['producto_id']}."
-                )
-            items.append(OrderItem(
-                cantidad=it["cantidad"],
-                producto_id=it["producto_id"],
-                producto=producto,
-            ))
-        warehouse.add_order(Order(
-            d["id"], d["prioridad"], d["estado"], items=items
-        ))
-
-medir("Cargar pedidos e ítems", cargar_pedidos)
-
-print(
-    "Objetos cargados:",
-    f"{len(warehouse.racks)} racks,",
-    f"{len(warehouse.productos)} productos,",
-    f"{len(warehouse.pedidos)} pedidos,",
-    f"{len(warehouse.pickers)} pickers",
-)
-inicio_grafo = perf_counter()
-cant_pasillos = warehouse.build_graph()
-tiempo_grafo = perf_counter() - inicio_grafo
-
-print(
-    f"Armar grafo: {tiempo_grafo * 1000:.3f} ms "
-    f"({len(warehouse.graph)} nodos)"
-    #f"({cant_pasillos} pasillos agregados)"
-)

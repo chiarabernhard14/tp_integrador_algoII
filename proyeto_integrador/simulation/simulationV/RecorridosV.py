@@ -137,7 +137,9 @@ class RouteFinderV:
         }
 
     @staticmethod
-    def cercania(grafo, inicio, nodos, buscador=PathFinderV.dijkstra):
+    def cercania(
+        grafo, inicio, nodos, buscador=PathFinderV.dijkstra, destino_final=None
+    ):
 
         reloj = time.perf_counter()
 
@@ -171,8 +173,11 @@ class RouteFinderV:
             pendientes.remove(mejor)
             actual = mejor
 
-        if actual != inicio:
-            distancia, camino, exp = RouteFinderV._tramo(grafo, buscador, actual, inicio)
+        destino = inicio if destino_final is None else destino_final
+        if actual != destino:
+            distancia, camino, exp = RouteFinderV._tramo(
+                grafo, buscador, actual, destino
+            )
             total += distancia
             expandidos += exp
             ruta.extend(camino[1:])
@@ -181,6 +186,47 @@ class RouteFinderV:
             "total_distance": total,
             "route": ruta,
             "order": orden,
+            "expanded_nodes": expandidos,
+            "execution_time_ms": (time.perf_counter() - reloj) * 1000,
+        }
+
+    @staticmethod
+    def zonas(grafo, inicio, nodos, buscador=PathFinderV.dijkstra):
+        """Ordena los productos agrupándolos según la geometría de sus racks."""
+        reloj = time.perf_counter()
+        zona_vertical = []
+        zona_horizontal = []
+
+        for ubicacion, rack in nodos:
+            if rack.ancho > rack.alto:
+                zona_horizontal.append(ubicacion)
+            else:
+                zona_vertical.append(ubicacion)
+
+        paradas = [inicio]
+        if zona_vertical:
+            zona_vertical.sort(key=lambda celda: (celda[0], celda[1]))
+            paradas.extend(zona_vertical)
+        if zona_horizontal:
+            zona_horizontal.sort(key=lambda celda: (celda[1], celda[0]))
+            paradas.extend(zona_horizontal)
+        paradas.append(inicio)
+
+        ruta = [inicio]
+        total = 0.0
+        expandidos = 0
+        for i in range(len(paradas) - 1):
+            distancia, camino, exp = RouteFinderV._tramo(
+                grafo, buscador, paradas[i], paradas[i + 1]
+            )
+            total += distancia
+            expandidos += exp
+            ruta.extend(camino[1:])
+
+        return {
+            "total_distance": total,
+            "route": ruta,
+            "order": zona_vertical + zona_horizontal,
             "expanded_nodes": expandidos,
             "execution_time_ms": (time.perf_counter() - reloj) * 1000,
         }

@@ -19,6 +19,8 @@ class PanelLateral:
 
     def _crear_botones(self):
         b = self.botones
+        b.append(Boton("algoritmo_a_estrella", "A*", 1030, 45, 64, 24))
+        b.append(Boton("algoritmo_dijkstra", "Dijkstra", 1100, 45, 120, 24))
         # Simulación
         b.append(Boton("iniciar", "Iniciar", 900, 72, 62, 34, (22, 163, 74)))
         b.append(Boton("pausar", "Pausar", 968, 72, 62, 34))
@@ -49,6 +51,7 @@ class PanelLateral:
         pygame.draw.rect(self.pantalla, cfg.BORDE_SUELO, (880, 20, 380, 740), 2, border_radius=18)
         self.pincel.texto("WAVE PICKING", self.fuentes.sub, cfg.ACENTO, 900, 32)
         self.pincel.texto("Algoritmos II", self.fuentes.chico, cfg.APAGADO, 1240, 38, "der")
+        self.pincel.texto("Asignación:", self.fuentes.mini, cfg.APAGADO, 900, 51)
         for boton in self.botones:
             self._dibujar_boton(boton)
         self.pincel.texto(f"Velocidad  x{self.anim.velocidad():g}", self.fuentes.chico,
@@ -58,7 +61,23 @@ class PanelLateral:
         self._dibujar_log()
 
     def _dibujar_boton(self, boton):
-        dibujar_boton(self.pantalla, self.fuentes.normal, boton.rect, boton.texto, boton.color)
+        algoritmos = {
+            "algoritmo_a_estrella": "a_estrella",
+            "algoritmo_dijkstra": "dijkstra",
+        }
+        activo = (
+            boton.nombre in algoritmos
+            and self.sesion.algoritmo_asignacion == algoritmos[boton.nombre]
+        )
+        fuente = self.fuentes.chico if boton.nombre in algoritmos else self.fuentes.normal
+        dibujar_boton(
+            self.pantalla,
+            fuente,
+            boton.rect,
+            boton.texto,
+            boton.color,
+            activo=activo,
+        )
 
     def _dibujar_tarjetas_pickers(self):
         sesion = self.sesion
