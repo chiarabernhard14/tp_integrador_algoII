@@ -507,8 +507,6 @@ class Warehouse:
         """Construye un grafo reducido con esquinas, accesos y proyecciones rectas."""
         if not self.reduced_graph:
             self.build_graph()
-        else:
-            return
 
         full_graph = self.reduced_graph
 
