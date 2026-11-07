@@ -109,13 +109,16 @@ class RouteFinderV:
         return distancia, camino, expandidos
 
     @staticmethod
-    def orden_pedidos(grafo, inicio, nodos, buscador=PathFinderV.dijkstra):
+    def orden_pedidos(
+        grafo, inicio, nodos, buscador=PathFinderV.dijkstra, destino_final=None
+    ):
         """Estrategia A: visita los nodos en el orden en que aparecen."""
 
         reloj = time.perf_counter()
 
         orden = list(dict.fromkeys(nodos))
-        paradas = [inicio] + orden + [inicio]
+        destino = inicio if destino_final is None else destino_final
+        paradas = [inicio] + orden + [destino]
 
         ruta = [inicio]
         total = 0.0
@@ -191,7 +194,9 @@ class RouteFinderV:
         }
 
     @staticmethod
-    def zonas(grafo, inicio, nodos, buscador=PathFinderV.dijkstra):
+    def zonas(
+        grafo, inicio, nodos, buscador=PathFinderV.dijkstra, destino_final=None
+    ):
         """Ordena los productos agrupándolos según la geometría de sus racks."""
         reloj = time.perf_counter()
         zona_vertical = []
@@ -210,7 +215,8 @@ class RouteFinderV:
         if zona_horizontal:
             zona_horizontal.sort(key=lambda celda: (celda[1], celda[0]))
             paradas.extend(zona_horizontal)
-        paradas.append(inicio)
+        destino = inicio if destino_final is None else destino_final
+        paradas.append(destino)
 
         ruta = [inicio]
         total = 0.0

@@ -1,9 +1,10 @@
 """VISTA PREVIA PROVISORIA de la interfaz: python vista_previa.py [--escenario ruta.json]
 
 Corre la aplicación visual nueva (app.py + SesionV.py + ModeloEscenarioV.py) con una
-simulación FALSA que vive en este mismo archivo. No usa tu Simulacion, ni Navegacion,
-ni el Warehouse reales: sirve solo para ver cómo se ven y se comportan la interfaz,
-el editor de mapa y los pickers mientras la generación de waves sigue cambiando.
+simulación FALSA que vive en este mismo archivo. No ejecuta la Simulacion real; el
+editor sí utiliza la validación del Warehouse del proyecto para aceptar escenarios.
+Sirve para revisar la interfaz, el editor de mapa y los pickers mientras la lógica
+de movimiento sigue siendo provisoria.
 
 - Los pickers se mueven con una búsqueda simple (BFS), no con A* ni con tus recorridos.
 - El generador de escenarios y el armado de waves son copias de ScenarioV y WavesV.
@@ -21,6 +22,7 @@ import os
 import random
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 try:
@@ -235,9 +237,9 @@ def _crear_despacho(warehouse, ancho_x):
         warehouse["zonas_despacho"].append({
             "id": f"ZONA_{nombre}",
             "puerta_id": id_puerta,
-            "ubicacion": {"x": x_zona, "y": 0},
+            "ubicacion": {"x": x_zona, "y": 1},
             "ancho": ancho_zona,
-            "alto": 3,
+            "alto": 2,
             "peso_max_kg": 500.0,
         })
 
@@ -353,12 +355,13 @@ def _crear_pedidos(productos, cantidad, max_items, azar):
 
 class _Rectangulo:
 
-    def __init__(self, id_, x, y, ancho, alto, sentido="AMBOS"):
+    def __init__(self, id_, x, y, ancho, alto, sentido="AMBOS", puerta_id=None):
         self.id = id_
         self.ubicacion = (x, y)
         self.ancho = ancho
         self.alto = alto
         self.sentido = sentido
+        self.puerta_id = puerta_id
 
     def cells(self):
         celdas = []
@@ -373,7 +376,8 @@ def _rectangulos(lista):
     for d in lista:
         u = d["ubicacion"]
         resultado[d["id"]] = _Rectangulo(
-            d["id"], u["x"], u["y"], d.get("ancho", 1), d.get("alto", 1), d.get("sentido", "AMBOS"))
+            d["id"], u["x"], u["y"], d.get("ancho", 1), d.get("alto", 1),
+            d.get("sentido", "AMBOS"), d.get("puerta_id"))
     return resultado
 
 
@@ -571,6 +575,7 @@ class _PickerSim:
         u = datos["posicion_inicial"]
         self.id = datos["id"]
         self.capacidad = datos["capacidad_carga_kg"]
+        self.entidad = SimpleNamespace(capacidad_carga_kg=self.capacidad)
         self.pos = (u["x"], u["y"])
         self.anterior = None
         self.ruta = []
@@ -586,9 +591,14 @@ class _PickerSim:
 
 class Simulacion:
 
-    def __init__(self, datos, waves=None):
+    def __init__(
+        self, datos, waves=None, algoritmo_camino="a_estrella",
+        estrategia="cercania",
+    ):
         self.datos = datos
         self.waves_entrada = waves
+        self.algoritmo_camino = algoritmo_camino
+        self.estrategia = estrategia
         self.mapa = _Mapa(datos)
         self.nav = SimpleNamespace(intersecciones=self.mapa.intersecciones)
         self.reiniciar()
@@ -897,7 +907,8 @@ class Simulacion:
                 for item in pedido.items:
                     if not item.picked:
                         todos = False
-                pedido.estado = "PREPARADO" if todos else "EN_PREPARACION"
+                entregada = wave["estado"] == "COMPLETADA"
+                pedido.estado = "PREPARADO" if todos and entregada else "EN_PREPARACION"
 
     def _registrar(self, mensaje):
         self.log.append(f"[Tick {self.tick}] {mensaje}")
@@ -1016,22 +1027,37 @@ def cargar_partida(ruta):
     return contenido["datos"], contenido["estado"]
 
 
+def ruta_autoguardado():
+    """Ubicación del guardado automático de esta vista provisoria."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        carpeta = Path(base) if base else Path.home() / "AppData" / "Local"
+    else:
+        base = os.environ.get("XDG_STATE_HOME")
+        carpeta = Path(base) if base else Path.home() / ".local" / "state"
+    return carpeta / "WavePicking" / "ultima_partida.json"
+
+
 # =====================================================================
 # Arranque
 # =====================================================================
 
 def _instalar_modulos():
-    """Registra las versiones provisorias con los nombres que importa SesionV."""
+    """Registra la simulación provisoria y conserva la validación real de escenarios."""
     paquete = "simulation.simulationV"
+    validar_warehouse = importlib.import_module(
+        f"{paquete}.ScenarioV"
+    ).validar_escenario
     definiciones = {
         "SimutionV": {"Simulacion": Simulacion},
         "ScenarioV": {"generar_escenario": generar_escenario,
                       "generar_pedidos": generar_pedidos,
-                      "validar_escenario": validar_escenario},
+                      "validar_escenario": validar_warehouse},
         "PersistenceV": {"guardar_escenario": guardar_escenario,
                          "cargar_escenario": cargar_escenario,
                          "guardar_partida": guardar_partida,
-                         "cargar_partida": cargar_partida},
+                         "cargar_partida": cargar_partida,
+                         "ruta_autoguardado": ruta_autoguardado},
     }
     for nombre, atributos in definiciones.items():
         modulo = types.ModuleType(f"{paquete}.{nombre}")

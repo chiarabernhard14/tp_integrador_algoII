@@ -1,4 +1,3 @@
-"""Punto de entrada: python main.py [--escenario ruta.json]"""
 import argparse
 import ctypes
 import importlib

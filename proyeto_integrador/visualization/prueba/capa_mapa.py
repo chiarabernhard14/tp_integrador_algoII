@@ -109,8 +109,19 @@ class CapaMapa:
 
     def _pasillos(self):
         g = self.g
-        for pasillo in self.wh.pasillos.values():
-            for x, y in pasillo.cells():
+        # La consigna considera pasillo toda celda libre que no sea rack,
+        # despacho o puerta, aunque el editor no tenga un pasillo explícito.
+        ocupadas = set()
+        for grupo in (self.wh.racks, self.wh.zonas_despacho):
+            for elemento in grupo.values():
+                ocupadas.update(elemento.cells())
+        # Las puertas son puntos, no elementos rectangulares, y por eso no
+        # implementan cells(). Cada puerta ocupa únicamente su celda.
+        ocupadas.update(tuple(puerta.ubicacion) for puerta in self.wh.puertas.values())
+        for x in range(g.ancho_celdas):
+            for y in range(g.alto_celdas):
+                if (x, y) in ocupadas:
+                    continue
                 color = PASILLO_A if (x + y) % 2 == 0 else PASILLO_B
                 pygame.draw.rect(self.total, color, g.rect(x, y, 1, 1))
         s = max(3, int(g.celda * 0.17))
@@ -140,7 +151,22 @@ class CapaMapa:
         g = self.g
         for zona in self.wh.zonas_despacho.values():
             x0, y0 = zona.ubicacion
-            rect = g.rect(x0, y0, zona.ancho, zona.alto)
+            x1, y1 = x0 + zona.ancho, y0 + zona.alto
+            puerta = next((p for p in self.wh.puertas.values()
+                           if getattr(zona, "puerta_id", None) == p.id), None)
+            if puerta is not None:
+                px, py = puerta.ubicacion
+                if py == y0 - 1:
+                    y0 -= 1
+                elif py == y1:
+                    y1 += 1
+                elif px == x0 - 1:
+                    x0 -= 1
+                elif px == x1:
+                    x1 += 1
+            # La zona lógica del warehouse se mantiene intacta; solo su dibujo
+            # cubre también la celda de acceso donde está la puerta.
+            rect = g.rect(x0, y0, x1 - x0, y1 - y0)
             self.total.blit(_degradado(rect.w, rect.h, DESPACHO_ARRIBA, DESPACHO_ABAJO), rect.topleft)
             rayas = pygame.Surface(rect.size, pygame.SRCALPHA)
             for k in range(-rect.h, rect.w, 20):
@@ -179,21 +205,61 @@ class CapaMapa:
         for puerta in self.wh.puertas.values():
             px, py = puerta.ubicacion[0], puerta.ubicacion[1]
             celda = g.rect(px, py, 1, 1)
-            adentro = self._hacia_adentro(px, py)
+            zona = next((z for z in self.wh.zonas_despacho.values()
+                         if getattr(z, "puerta_id", None) == puerta.id), None)
+            adentro = self._hacia_zona(puerta, zona) or self._hacia_adentro(px, py)
             horizontal = adentro in ("N", "S")
             largo = int(celda.w * 0.96)
             grosor = max(10, int(celda.w * 0.46))
             r = pygame.Rect(0, 0, largo if horizontal else grosor, grosor if horizontal else largo)
-            corrimiento = int(grosor * 0.15)       # el portón queda a caballo del muro, apenas hacia adentro
-            if adentro == "N":
-                r.center = (celda.centerx, celda.bottom - corrimiento)
-            elif adentro == "S":
-                r.center = (celda.centerx, celda.top + corrimiento)
-            elif adentro == "E":
-                r.center = (celda.left + corrimiento, celda.centery)
-            else:
-                r.center = (celda.right - corrimiento, celda.centery)
+            centro_borde = self._centro_puerta(celda, puerta, zona, grosor)
+            if centro_borde is None:
+                corrimiento = int(grosor * 0.15)
+                if adentro == "N":
+                    centro_borde = (celda.centerx, celda.bottom - corrimiento)
+                elif adentro == "S":
+                    centro_borde = (celda.centerx, celda.top + corrimiento)
+                elif adentro == "E":
+                    centro_borde = (celda.left + corrimiento, celda.centery)
+                else:
+                    centro_borde = (celda.right - corrimiento, celda.centery)
+            r.center = centro_borde
             self._porton(r, horizontal, adentro)
+
+    @staticmethod
+    def _hacia_zona(puerta, zona):
+        if zona is None:
+            return None
+        zx, zy = zona.ubicacion
+        px, py = puerta.ubicacion
+        if py == zy - 1:
+            return "N"
+        if py == zy + zona.alto:
+            return "S"
+        if px == zx - 1:
+            return "E"
+        if px == zx + zona.ancho:
+            return "O"
+        return None
+
+    @staticmethod
+    def _centro_puerta(celda, puerta, zona, grosor):
+        """Dibuja el portón asociado dentro del rectángulo de despacho,
+        manteniendo intacta la celda lógica de la puerta."""
+        if zona is None:
+            return None
+        zx, zy = zona.ubicacion
+        px, py = puerta.ubicacion
+        inset = grosor // 2 + 3
+        if py == zy - 1:
+            return celda.centerx, celda.top - inset
+        if py == zy + zona.alto:
+            return celda.centerx, celda.bottom + inset
+        if px == zx - 1:
+            return celda.right + inset, celda.centery
+        if px == zx + zona.ancho:
+            return celda.left - inset, celda.centery
+        return None
 
     def _porton(self, r, horizontal, adentro):
         self.pincel.rect_alfa(r.x + 2, r.y + 3, r.w, r.h, (0, 0, 0, 100), 5)

@@ -13,6 +13,7 @@ class Animacion:
     def reiniciar(self):
         self.progreso = 1.0
         self.prev = {}
+        self.pausada = False
 
     def tic(self, dt):
         self.t += dt
@@ -21,8 +22,16 @@ class Animacion:
         return self.progreso < 1.0
 
     def avanzar(self, dt):
+        if self.pausada:
+            return
         paso = dt * cfg.VELOCIDADES[self.vel_idx] / cfg.TICK_SEG
         self.progreso = min(1.0, self.progreso + paso)
+
+    def pausar(self):
+        self.pausada = True
+
+    def continuar(self):
+        self.pausada = False
 
     def arrancar(self, posiciones_previas):
         self.prev = posiciones_previas

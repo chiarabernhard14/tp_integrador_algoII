@@ -44,27 +44,28 @@ MAPA_MIN_Y, MAPA_MAX_Y = 8, 30
 TAB_AUTO = pygame.Rect(44, 34, 190, 42)
 TAB_MANUAL = pygame.Rect(242, 34, 270, 42)
 BTN_CANCELAR = pygame.Rect(728, 38, 112, 34)
-PANEL_DERECHO = pygame.Rect(880, 20, 380, 740)
+PANEL_DERECHO = pygame.Rect(880, 20, 860, 860)
 
-BTN_GENERAR = pygame.Rect(900, 690, 340, 44)
+BTN_GENERAR = pygame.Rect(900, 690, 820, 44)
 
-ANCHO_MENOS = pygame.Rect(1060, 94, 38, 30)
-ANCHO_VALOR = pygame.Rect(1104, 94, 76, 30)
-ANCHO_MAS = pygame.Rect(1186, 94, 38, 30)
-ALTO_MENOS = pygame.Rect(1060, 132, 38, 30)
-ALTO_VALOR = pygame.Rect(1104, 132, 76, 30)
-ALTO_MAS = pygame.Rect(1186, 132, 38, 30)
-BTN_NUEVO = pygame.Rect(900, 174, 340, 32)
-BTN_VALIDAR = pygame.Rect(900, 690, 168, 44)
-BTN_USAR = pygame.Rect(1072, 690, 168, 44)
+ANCHO_MENOS = pygame.Rect(1508, 94, 42, 30)
+ANCHO_VALOR = pygame.Rect(1558, 94, 90, 30)
+ANCHO_MAS = pygame.Rect(1656, 94, 42, 30)
+ALTO_MENOS = pygame.Rect(1508, 132, 42, 30)
+ALTO_VALOR = pygame.Rect(1558, 132, 90, 30)
+ALTO_MAS = pygame.Rect(1656, 132, 42, 30)
+BTN_NUEVO = pygame.Rect(900, 174, 820, 32)
+BTN_VALIDAR = pygame.Rect(900, 690, 402, 44)
+BTN_USAR = pygame.Rect(1318, 690, 402, 44)
 
 AYUDA_MANUAL = (
-    "Arrastrá sobre el mapa para dibujar.",
-    "Clic derecho: cancelar el arrastre.",
-    "Producto: clic en un rack (z, stock, peso).",
-    "Picker: clic para colocar; arrastralo para moverlo.",
-    "Borrar: saca primero el producto.",
-    "Atajos: 1-7 herramientas, Ctrl+Z, V, Enter.",
+    "Arrastrá para dibujar; clic derecho cancela.",
+    "Rack: un lado de 2; dejá acceso y espacio a los bordes.",
+    "Puerta: en el borde y junto a una zona de despacho.",
+    "Pasillo: elegí sentido N/S/E/O o Libre.",
+    "Producto: clic en rack; los niveles z van consecutivos.",
+    "Picker: clic para colocar; arrastrá para moverlo.",
+    "Validar revisa reglas, accesos y caminos.",
 )
 
 VERDE_BOTON = (22, 163, 74)
@@ -106,10 +107,10 @@ class PantallaGenerador:
         return pygame.Rect(x + desplazamiento, y + 26, ANCHOS_MODO[indice], 34)
 
     def _rect_herramienta(self, indice):
-        return pygame.Rect(900 + (indice % 2) * 172, 238 + (indice // 2) * 40, 168, 34)
+        return pygame.Rect(900 + (indice % 2) * 412, 238 + (indice // 2) * 40, 400, 34)
 
     def _rect_sentido(self, indice):
-        return pygame.Rect(900 + indice * 68, 432, 64, 30)
+        return pygame.Rect(900 + indice * 160, 432, 150, 30)
 
     def _paso(self):
         return 5 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
@@ -354,7 +355,7 @@ class PantallaGenerador:
     def _dibujar_miniatura_manual(self):
         f = self.fuentes
         self.pincel.texto("MAPA DE LA PESTAÑA MANUAL", f.mini, cfg.ACENTO, 900, 360)
-        marco = pygame.Rect(900, 382, 340, 262)
+        marco = pygame.Rect(900, 382, 820, 262)
         pygame.draw.rect(self.pantalla, (30, 34, 44), marco, border_radius=10)
         pygame.draw.rect(self.pantalla, cfg.BORDE, marco, 1, border_radius=10)
         if self.editor.esta_vacio():

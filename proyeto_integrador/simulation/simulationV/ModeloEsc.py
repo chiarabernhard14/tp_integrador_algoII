@@ -13,11 +13,11 @@ PESO_MAX_ZONA_KG = 500.0
 CAPACIDAD_PICKER_KG = 200.0
 
 # Contra qué listas choca cada herramienta al colocarse.
-# La puerta puede ir sobre una zona (la puerta va DENTRO de la zona de despacho).
+# La puerta ocupa una celda del borde, contigua a su zona de despacho.
 BLOQUEAN = {
     "rack": ("racks", "zonas", "puertas", "pasillos", "pickers"),
-    "despacho": ("racks", "zonas", "pasillos", "pickers"),
-    "puerta": ("racks", "puertas", "pasillos", "pickers"),
+    "despacho": ("racks", "zonas", "puertas", "pasillos", "pickers"),
+    "puerta": ("racks", "zonas", "puertas", "pasillos", "pickers"),
     "pasillo": ("racks", "zonas", "puertas", "pasillos"),
     "picker": ("racks", "zonas", "puertas", "pickers"),
 }
@@ -66,11 +66,22 @@ class ModeloEscenario:
         """Texto del problema, o "" si se puede colocar."""
         if herramienta not in BLOQUEAN:
             return ""
+        if any(not isinstance(v, int) or isinstance(v, bool) for v in (x, y, w, h)):
+            return "La ubicación y el tamaño deben expresarse en celdas enteras"
+        if w < 1 or h < 1:
+            return "El elemento debe ocupar al menos una celda"
         if x < 0 or y < 0 or x + w > self.ancho_x or y + h > self.largo_y:
             return "Se sale del warehouse"
         if herramienta == "rack" and w != 2 and h != 2:
             return "Un lado del rack tiene que valer 2"
+        if herramienta == "rack":
+            if w == 2 and (x < 1 or x + w >= self.ancho_x):
+                return "El rack necesita espacio libre a ambos lados para acceder a sus productos"
+            if w != 2 and (y < 1 or y + h >= self.largo_y):
+                return "El rack necesita espacio libre a ambos lados para acceder a sus productos"
         if herramienta == "puerta":
+            if (w, h) != (1, 1):
+                return "La puerta ocupa una sola celda"
             en_borde = x == 0 or x == self.ancho_x - 1 or y == 0 or y == self.largo_y - 1
             if not en_borde:
                 return "La puerta tiene que ir sobre el borde"
@@ -115,6 +126,8 @@ class ModeloEscenario:
             return "El producto tiene que ir dentro de un rack"
         if z < 1:
             return "La altura z tiene que ser 1 o más"
+        if z != self.siguiente_z(x, y):
+            return f"En esa celda, el próximo nivel disponible es z={self.siguiente_z(x, y)}"
         if stock < 1:
             return "El stock tiene que ser al menos 1"
         if peso_kg <= 0:
@@ -199,39 +212,70 @@ class ModeloEscenario:
     # ---------- puerta y zona ----------
 
     def puerta_de_zona(self, zona):
-        """La puerta va DENTRO de la zona de despacho."""
+        """Devuelve la puerta ubicada en una celda contigua a la zona."""
         for p in self.puertas:
-            if self._contiene(zona, p["ubicacion"]["x"], p["ubicacion"]["y"]):
+            ubicacion = (p["ubicacion"]["x"], p["ubicacion"]["y"])
+            if ubicacion in self._celdas_adyacentes(zona):
                 return p["id"]
         return ""
 
     def _zona_de_puerta(self, puerta):
         for z in self.zonas:
-            if self._contiene(z, puerta["ubicacion"]["x"], puerta["ubicacion"]["y"]):
+            ubicacion = (puerta["ubicacion"]["x"], puerta["ubicacion"]["y"])
+            if ubicacion in self._celdas_adyacentes(z):
                 return z["id"]
         return ""
+
+    def _celdas_adyacentes(self, elemento):
+        """Celdas vecinas del rectángulo que quedan dentro del warehouse."""
+        x0 = elemento["ubicacion"]["x"]
+        y0 = elemento["ubicacion"]["y"]
+        ancho, alto = elemento["ancho"], elemento["alto"]
+        resultado = set()
+        for x in range(x0, x0 + ancho):
+            resultado.update(((x, y0 - 1), (x, y0 + alto)))
+        for y in range(y0, y0 + alto):
+            resultado.update(((x0 - 1, y), (x0 + ancho, y)))
+        return {
+            (x, y) for x, y in resultado
+            if 0 <= x < self.ancho_x and 0 <= y < self.largo_y
+        }
 
     # ---------- exportar ----------
 
     def validar(self):
-        """Lo mínimo para poder armar el diccionario."""
+        """Valida requisitos del editor y reutiliza la validación del Warehouse."""
         errores = []
         if not self.zonas:
             errores.append("Falta al menos una zona de despacho")
         for z in self.zonas:
             if not self.puerta_de_zona(z):
-                errores.append(f"La zona {z['id']} no tiene ninguna puerta adentro")
+                errores.append(f"La zona {z['id']} necesita una puerta contigua en el borde del warehouse")
         for p in self.puertas:
             if not self._zona_de_puerta(p):
-                errores.append(f"La puerta {p['id']} no está dentro de ninguna zona")
+                errores.append(f"La puerta {p['id']} no tiene una zona de despacho enfrente")
         if not self.pickers:
             errores.append("Falta al menos un picker")
+        if not self.productos:
+            errores.append("Falta al menos un producto")
+        elif sum(p["cantidad_disponible"] for p in self.productos) < 8:
+            errores.append("El stock total debe alcanzar para generar los 8 pedidos del escenario")
+
+        if not errores:
+            try:
+                from simulation.simulationV.ScenarioV import validar_escenario
+                validar_escenario(self._construir_diccionario())
+            except (KeyError, TypeError, ValueError) as error:
+                errores.append(str(error))
         return errores
 
     def a_diccionario(self):
         errores = self.validar()
         if errores:
             raise ValueError("Escenario inválido: " + " | ".join(errores))
+        return self._construir_diccionario()
+
+    def _construir_diccionario(self):
         zonas = []
         for z in self.zonas:
             zonas.append({**copy.deepcopy(z),

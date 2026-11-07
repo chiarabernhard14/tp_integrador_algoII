@@ -1,14 +1,14 @@
 """Constantes de la visualización (colores, tamaños, tiempos)."""
 
-ANCHO = 1280
-ALTO = 780
+ANCHO = 1760
+ALTO = 900
 FPS = 60
 
 # Zona donde se dibuja el mapa del almacén (dentro del tablero oscuro).
 AREA_X = 40
 AREA_Y = 96
 AREA_W = 800
-AREA_H = 620
+AREA_H = 740
 
 TICK_SEG = 0.30
 VELOCIDADES = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
@@ -26,7 +26,7 @@ ESTILO_PICKER = "montacargas"
 
 FUENTES = "segoeui,helveticaneue,helvetica,arial,dejavusans,liberationsans"
 
-BG = (255, 255, 255)
+BG = (32, 36, 44)
 SUELO = (50, 54, 62)
 BORDE_SUELO = (88, 94, 106)
 PANEL = (44, 48, 56)
@@ -59,6 +59,7 @@ COLORES_PICKER = (
 
 COLOR_ESTADO_PICKER = {
     "disponible": TEXTO,
+    "deambulando": APAGADO,
     "yendo_a_producto": ACENTO,
     "regresando": ACENTO,
     "esperando": AMARILLO,
@@ -68,6 +69,7 @@ COLOR_ESTADO_PICKER = {
 
 NOMBRE_ESTADO_PICKER = {
     "disponible": "Disponible",
+    "deambulando": "Sin trabajo",
     "yendo_a_producto": "Yendo a producto",
     "regresando": "Regresando",
     "esperando": "Esperando",

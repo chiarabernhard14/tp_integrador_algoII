@@ -1,5 +1,8 @@
 from simulation.simulationV.SimutionV import Simulacion
-from simulation.simulationV.AsignadorPickersV import ALGORITMOS_DISTANCIA
+from simulation.simulationV.PlanificadorViajesV import (
+    ALGORITMOS_CAMINO,
+    ESTRATEGIAS,
+)
 from simulation.simulationV.ScenarioV import (
     generar_escenario,
     generar_pedidos,
@@ -18,7 +21,7 @@ class Sesion:
 
     def __init__(
         self, datos, waves=None, generador_waves=None,
-        algoritmo_asignacion="a_estrella",
+        algoritmo_camino="a_estrella", estrategia_recorrido="cercania",
     ):
         """
         - waves: lista de waves ya generadas por el módulo de tu compañera.
@@ -27,14 +30,16 @@ class Sesion:
           pedidos del Warehouse.
         """
         self.generador_waves = generador_waves
-        self.algoritmo_asignacion = algoritmo_asignacion
+        self.algoritmo_camino = algoritmo_camino
+        self.estrategia_recorrido = estrategia_recorrido
         self.usar_datos(datos, waves)
 
     # ---------- estado ----------
 
     def usar_simulacion(self, sim):
         self.sim = sim
-        self.algoritmo_asignacion = sim.algoritmo_asignacion
+        self.algoritmo_camino = sim.algoritmo_camino
+        self.estrategia_recorrido = sim.estrategia
         self.capacidades = {}
         for picker in self.sim.pickers:
             # Lee capacidad desde EstadoPicker o directamente desde la entidad Picker
@@ -127,28 +132,48 @@ class Sesion:
             Simulacion(
                 datos,
                 waves_listas,
-                algoritmo_asignacion=self.algoritmo_asignacion,
+                algoritmo_camino=self.algoritmo_camino,
+                estrategia=self.estrategia_recorrido,
             )
         )
 
-    def seleccionar_algoritmo_asignacion(self, algoritmo):
-        """Cambia A* / Dijkstra antes del primer paso y recalcula la ronda inicial."""
-        if algoritmo not in ALGORITMOS_DISTANCIA:
+    def _seleccionar_configuracion_recorrido(self, algoritmo=None, estrategia=None):
+        algoritmo = self.algoritmo_camino if algoritmo is None else algoritmo
+        estrategia = self.estrategia_recorrido if estrategia is None else estrategia
+        if algoritmo not in ALGORITMOS_CAMINO:
             raise ValueError(
-                f"Algoritmo de asignación desconocido: {algoritmo}. "
-                f"Opciones: {', '.join(ALGORITMOS_DISTANCIA)}."
+                f"Algoritmo de camino desconocido: {algoritmo}. "
+                f"Opciones: {', '.join(ALGORITMOS_CAMINO)}."
             )
-        if algoritmo == self.algoritmo_asignacion:
+        if estrategia not in ESTRATEGIAS:
+            raise ValueError(
+                f"Estrategia de recorrido desconocida: {estrategia}. "
+                f"Opciones: {', '.join(ESTRATEGIAS)}."
+            )
+        if (algoritmo, estrategia) == (
+            self.algoritmo_camino, self.estrategia_recorrido
+        ):
             return False
         if self.sim.tick > 0:
             raise ValueError(
-                "Para cambiar el algoritmo de asignación, reiniciá la simulación "
-                "y elegilo antes de avanzar."
+                "Para cambiar el recorrido, reiniciá la simulación y elegí las "
+                "opciones antes de avanzar."
             )
         waves = self.sim.waves_entrada
-        self.algoritmo_asignacion = algoritmo
+        self.algoritmo_camino = algoritmo
+        self.estrategia_recorrido = estrategia
         self.usar_datos(self.sim.datos, waves)
         return True
+
+    def seleccionar_algoritmo_camino(self, algoritmo):
+        return self._seleccionar_configuracion_recorrido(algoritmo=algoritmo)
+
+    def seleccionar_estrategia_recorrido(self, estrategia):
+        return self._seleccionar_configuracion_recorrido(estrategia=estrategia)
+
+    def seleccionar_algoritmo_asignacion(self, algoritmo):
+        """Compatibilidad con llamadas antiguas: ahora se elige el buscador de caminos."""
+        return self.seleccionar_algoritmo_camino(algoritmo)
 
     def usar_escenario_editado(self, datos, cantidad_pedidos=8, max_items=4):
         completo = dict(datos)
@@ -180,9 +205,18 @@ class Sesion:
             }
             for w in estado.get("waves", [])
         ]
-        algoritmo = estado.get("algoritmo_asignacion", self.algoritmo_asignacion)
+        algoritmo = estado.get(
+            "algoritmo_camino",
+            estado.get("algoritmo_asignacion", self.algoritmo_camino),
+        )
+        estrategia = estado.get("estrategia", self.estrategia_recorrido)
+        self.algoritmo_camino = algoritmo
+        self.estrategia_recorrido = estrategia
         sim = Simulacion(
-            datos, waves_guardadas, algoritmo_asignacion=algoritmo
+            datos,
+            waves_guardadas,
+            algoritmo_camino=algoritmo,
+            estrategia=estrategia,
         )
         try:
             sim.restaurar(estado)

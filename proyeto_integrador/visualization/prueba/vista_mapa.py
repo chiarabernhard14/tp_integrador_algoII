@@ -50,11 +50,11 @@ class VistaMapa:
     def _construir_fondo(self):
         fondo = pygame.Surface((cfg.ANCHO, cfg.ALTO))
         fondo.fill(cfg.BG)
-        pygame.draw.rect(fondo, cfg.SUELO, (20, 20, 840, 740), border_radius=18)
+        pygame.draw.rect(fondo, cfg.SUELO, (20, 20, 840, 860), border_radius=18)
         for x in range(44, 860, 24):
-            for y in range(44, 760, 24):
+            for y in range(44, 880, 24):
                 pygame.draw.circle(fondo, (62, 68, 82), (x, y), 1)
-        pygame.draw.rect(fondo, cfg.BORDE_SUELO, (20, 20, 840, 740), 2, border_radius=18)
+        pygame.draw.rect(fondo, cfg.BORDE_SUELO, (20, 20, 840, 860), 2, border_radius=18)
         return fondo
 
     def dibujar_fondo(self):
@@ -87,16 +87,18 @@ class VistaMapa:
 
     def _dibujar_encabezado(self):
         sesion = self.sesion
-        preparados = 0
-        for pedido in sesion.sim.pedidos_wave:
-            if pedido.estado == "PREPARADO":
-                preparados += 1
+        waves = sesion.estado.get("waves", [])
+        completadas = sum(
+            bool(wave.get("completada"))
+            or str(wave.get("estado", "")).upper() == "COMPLETADA"
+            for wave in waves
+        )
         pasos = 0
         for p in sesion.estado["pickers"]:
             pasos += len(p["trail"]) - 1
         self.pincel.texto("Almacen", self.fuentes.titulo, cfg.TEXTO, 44, 30)
         resumen = (f"Tick {sesion.estado['tick']}   |   Pickers {len(sesion.estado['pickers'])}   |   "
-                   f"Pedidos listos {preparados}/{len(sesion.sim.pedidos_wave)}   |   Pasos {pasos}")
+                   f"Waves completas {completadas}/{len(waves)}   |   Pasos {pasos}")
         self.pincel.texto(resumen, self.fuentes.normal, cfg.APAGADO, 44, 68)
         ancho = 300
         self.pincel.rect_alfa(540, 36, ancho, 30, (88, 166, 255, 38), 15)
@@ -203,14 +205,12 @@ class VistaMapa:
         wave_id = p.get("wave_id")
         if wave_id is None:
             return False
-        for wave in self.sesion.estado.get("waves", []):
-            if wave["id"] != wave_id:
-                continue
-            pedidos_de_la_wave = set(wave["pedidos"])
-            for recogido in p["recogidos"]:
-                if recogido["pedido_id"] in pedidos_de_la_wave:
-                    return True
-        return False
+        # Simulacion.estado() registra cada recogida directamente con su wave_id.
+        # Así no necesitamos reconstruir pedidos ni depender de la vista provisoria.
+        return any(
+            recogido.get("wave_id") == wave_id
+            for recogido in p.get("recogidos", [])
+        )
 
     def _dibujar_pickers(self):
         pickers = self.sesion.estado["pickers"]
@@ -250,7 +250,7 @@ class VistaMapa:
     def _dibujar_leyenda(self):
         f = self.fuentes.chico
         p = self.pincel
-        y = 732
+        y = 852
         x = 44
         pygame.draw.rect(self.pantalla, mapa.PASILLO_A, (x, y + 1, 24, 14), border_radius=3)
         trazo = [(x + 9, y + 4), (x + 15, y + 8), (x + 9, y + 12)]
@@ -279,7 +279,7 @@ class VistaMapa:
         p.texto("Interseccion (I)", f, cfg.APAGADO, x + 20, y)
 
     def dibujar_tooltip(self):
-        mx, my = pygame.mouse.get_pos()
+        mx, my = getattr(self, "mouse_pos", pygame.mouse.get_pos())
         celda = self.grilla.celda_en(mx, my)
         if celda is None:
             return

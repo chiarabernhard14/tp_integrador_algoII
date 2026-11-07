@@ -1,11 +1,4 @@
-from .RecorridosV import PathFinderV, RouteFinderV
-
-
 EPSILON = 1e-9
-ALGORITMOS_DISTANCIA = {
-    "a_estrella": PathFinderV.a_estrella,
-    "dijkstra": PathFinderV.dijkstra,
-}
 
 
 def _id(picker):
@@ -59,13 +52,9 @@ class Asignador:
     peso, acceso, regreso y capacidad de las zonas se comprueban antes de elegir.
     """
 
-    def __init__(
-        self, nav, zonas, waves, estrategia="cercania",
-        algoritmo_asignacion="a_estrella",
-    ):
+    def __init__(self, nav, zonas, waves, evaluador_viaje):
         self.nav = nav
-        self.estrategia = estrategia
-        self.configurar_algoritmo(algoritmo_asignacion)
+        self.evaluador_viaje = evaluador_viaje
         self.zonas = {}
         for zona in zonas.values():
             celdas = set()
@@ -88,7 +77,6 @@ class Asignador:
         self.peso_de_trabajo = {}
         self.zona_de_trabajo = {}
         self.imposibles = []
-        self._cache_recorrido = {}
 
         for indice, wave in enumerate(waves, 1):
             wave_id, lineas = _lineas_wave(wave)
@@ -112,80 +100,26 @@ class Asignador:
                 self.accesos[producto_id] = tuple(acceso) if acceso is not None else None
             self.waves.append(registro)
 
-    def configurar_algoritmo(self, algoritmo):
-        if algoritmo not in ALGORITMOS_DISTANCIA:
-            raise ValueError(
-                f"Algoritmo de asignación desconocido: {algoritmo}. "
-                f"Opciones: {', '.join(ALGORITMOS_DISTANCIA)}."
-            )
-        self.algoritmo_asignacion = algoritmo
-        self._buscador = ALGORITMOS_DISTANCIA[algoritmo]
-
-    def _buscar_con_cache(self, grafo, origen, destino):
-        origen, destino = tuple(origen), tuple(destino)
-        key = (origen, destino)
-        if key not in self._cache_recorrido:
-            if origen not in grafo or destino not in grafo:
-                self._cache_recorrido[key] = (float("inf"), [], 0)
-            else:
-                self._cache_recorrido[key] = self._buscador(grafo, origen, destino)
-        return self._cache_recorrido[key]
-
-    def _recorrido_hasta_zona(self, picker, producto_ids, orden, zona_id):
-        paradas = []
-        for producto_id in orden:
-            acceso = self.accesos.get(producto_id)
-            if producto_id in producto_ids and acceso is not None and acceso not in paradas:
-                paradas.append(acceso)
-
-        zona = self.zonas[zona_id]
-        inicio = _pos(picker)
-        if self.estrategia == "cercania":
-            distancias = []
-            for celda in zona["celdas"]:
-                try:
-                    recorrido = RouteFinderV.cercania(
-                        self.nav.grafo,
-                        inicio,
-                        paradas,
-                        buscador=self._buscar_con_cache,
-                        destino_final=celda,
-                    )
-                except ValueError:
-                    continue
-                distancias.append(recorrido["total_distance"])
-            return min(distancias) if distancias else None
-
-        actual = inicio
-        distancia_total = 0.0
-        for parada in paradas:
-            distancia, _, _ = self._buscar_con_cache(
-                self.nav.grafo, actual, parada
-            )
-            if distancia == float("inf"):
-                return None
-            distancia_total += distancia
-            actual = parada
-
-        vueltas = [
-            self._buscar_con_cache(self.nav.grafo, actual, celda)[0]
-            for celda in zona["celdas"]
-        ]
-        vueltas = [distancia for distancia in vueltas if distancia != float("inf")]
-        return distancia_total + min(vueltas) if vueltas else None
-
     def _opciones_de_viaje(self, picker, productos, peso, wave):
         opciones = []
+        planes = {}
         for zona_id in sorted(self.zonas):
             zona = self.zonas[zona_id]
             if zona["restante"] + EPSILON < peso:
                 continue
-            distancia = self._recorrido_hasta_zona(
-                picker, set(productos), wave["orden"], zona_id
+            plan = self.evaluador_viaje(
+                picker,
+                set(productos),
+                wave["orden"],
+                zona_id,
+                zona["celdas"],
+                self.accesos,
             )
-            if distancia is not None:
+            if plan is not None:
+                distancia = plan["total_distance"]
                 opciones.append((distancia, zona_id))
-        return opciones
+                planes[zona_id] = plan
+        return opciones, planes
 
     def _elegir_zonas(self, activos, opciones, cargas):
         mejor = None
@@ -234,10 +168,13 @@ class Asignador:
                 return
             if k == len(unidades):
                 activos = [i for i, productos in enumerate(asignados) if productos]
-                opciones = {
-                    i: self._opciones_de_viaje(pickers[i], asignados[i], cargas[i], wave)
+                evaluaciones = {
+                    i: self._opciones_de_viaje(
+                        pickers[i], asignados[i], cargas[i], wave
+                    )
                     for i in activos
                 }
+                opciones = {i: evaluaciones[i][0] for i in activos}
                 if any(not opciones[i] for i in activos):
                     return
                 zonas = self._elegir_zonas(activos, opciones, cargas)
@@ -245,7 +182,15 @@ class Asignador:
                     return
                 vector = tuple(bits)
                 if mejor is None or vector > mejor[0] or (vector == mejor[0] and zonas[0] < mejor[1]):
-                    mejor = (vector, zonas[0], [list(x) for x in asignados], list(cargas), zonas[1])
+                    planes = {i: evaluaciones[i][1] for i in activos}
+                    mejor = (
+                        vector,
+                        zonas[0],
+                        [list(x) for x in asignados],
+                        list(cargas),
+                        zonas[1],
+                        planes,
+                    )
                 return
 
             producto_id = unidades[k]
@@ -276,7 +221,7 @@ class Asignador:
         if mejor is None:
             return []
 
-        _, _, productos_por_picker, pesos, zonas = mejor
+        _, _, productos_por_picker, pesos, zonas, planes = mejor
         trabajos = []
         for i, productos in enumerate(productos_por_picker):
             if not productos:
@@ -297,6 +242,8 @@ class Asignador:
                 "picker": self._ids[i],
                 "zona": zona_id,
                 "peso": pesos[i],
+                "distancia_estimada": planes[i][zona_id]["total_distance"],
+                "orden_productos": list(planes[i][zona_id]["orden_productos"]),
                 "productos": [
                     {"producto_id": pid, "cantidad": cantidad, "acceso": self.accesos[pid]}
                     for pid, cantidad in cantidades.items()

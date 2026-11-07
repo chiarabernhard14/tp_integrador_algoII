@@ -28,6 +28,7 @@ class _ElementoVista:
 
     def __init__(self, d):
         self.id = d["id"]
+        self.puerta_id = d.get("puerta_id")
         self.ubicacion = (d["ubicacion"]["x"], d["ubicacion"]["y"])
         self.ancho = d["ancho"]
         self.alto = d["alto"]

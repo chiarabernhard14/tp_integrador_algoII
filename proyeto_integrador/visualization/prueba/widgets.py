@@ -4,6 +4,13 @@ import pygame
 
 from . import config as cfg
 
+_MOUSE_POS_LOGICA = (0, 0)
+
+
+def actualizar_pos_mouse(pos):
+    global _MOUSE_POS_LOGICA
+    _MOUSE_POS_LOGICA = pos
+
 
 class Boton:
 
@@ -79,7 +86,7 @@ class Alerta:
 
 def dibujar_boton(pantalla, fuente, rect, texto, color=None, activo=False, habilitado=True):
     """Botón redondeado con resaltado al pasar el mouse; lo usan el panel y la pantalla de generar."""
-    mx, my = pygame.mouse.get_pos()
+    mx, my = _MOUSE_POS_LOGICA
     sobre = habilitado and rect.collidepoint((mx, my))
     if not habilitado:
         relleno = (58, 62, 72)

@@ -1,24 +1,17 @@
 from .NavegationV import Navegacion
 from .CargadorV import cargar_warehouse
-from .RecorridosV import RouteFinderV
 from .AsignadorPickersV import Asignador
+from .GestorColisionesV import GestorColisionesV
+from .PlanificadorViajesV import (
+    ALGORITMOS_CAMINO,
+    ESTRATEGIAS,
+    PlanificadorViajesV,
+)
 
 LIMITE_BLOQUEO = 20
 
-# Estrategias de recorrido disponibles para ordenar las visitas de una wave.
-ESTRATEGIAS = {
-    "orden": RouteFinderV.orden_pedidos,
-    "cercania": RouteFinderV.cercania,
-}
-
-
 def _id_picker(picker):
     return picker.id
-
-
-def _clave_turno(picker):
-    """Mueven primero los pickers con trabajo; los que deambulan, después."""
-    return (picker.estado == "deambulando", picker.id)
 
 
 class EstadoPicker:
@@ -74,8 +67,8 @@ class Simulacion:
       entre los pickers libres y vuelve a decidir cuando alguno entrega.
     - Una wave puede generar varios viajes y ser atendida por varios pickers.
       Cada viaje termina en la zona de despacho que reservó el asignador.
-    - El orden en que el picker visita los productos de su wave lo decide la
-      estrategia de recorrido elegida ("orden" o "cercania", ver ESTRATEGIAS).
+    - El orden en que el picker visita los productos de su viaje lo decide la
+      estrategia de recorrido elegida (ver ESTRATEGIAS).
       Si la próxima tarea del orden está bloqueada por otro picker, salta a
       la siguiente alcanzable y suma un salto (picker.saltos). Con
       permitir_saltos=False el picker espera esa tarea: el recorrido
@@ -93,19 +86,24 @@ class Simulacion:
 
     def __init__(
         self, datos, waves=None, estrategia="cercania", permitir_saltos=True,
-        algoritmo_asignacion="a_estrella",
+        algoritmo_camino="a_estrella",
     ):
         if estrategia not in ESTRATEGIAS:
             raise ValueError(
                 f"Estrategia desconocida: {estrategia}. "
                 f"Opciones: {', '.join(ESTRATEGIAS)}."
             )
+        if algoritmo_camino not in ALGORITMOS_CAMINO:
+            raise ValueError(
+                f"Algoritmo de camino desconocido: {algoritmo_camino}. "
+                f"Opciones: {', '.join(ALGORITMOS_CAMINO)}."
+            )
 
         self.datos = datos
         self.waves_entrada = waves
         self.estrategia = estrategia
         self.permitir_saltos = permitir_saltos
-        self.algoritmo_asignacion = algoritmo_asignacion
+        self.algoritmo_camino = algoritmo_camino
 
         self.reiniciar()
 
@@ -123,7 +121,7 @@ class Simulacion:
         self.warehouse = cargar_warehouse(self.datos)
 
         # Navegación utiliza ese mismo Warehouse.
-        self.nav = Navegacion(self.warehouse)
+        self.nav = Navegacion(self.warehouse, algoritmo=self.algoritmo_camino)
 
         self.productos = self.warehouse.productos
 
@@ -134,6 +132,14 @@ class Simulacion:
             picker = EstadoPicker(entidad)
             self.pickers.append(picker)
             self.pickers_por_id[picker.id] = picker
+
+        self.colisiones = GestorColisionesV(
+            pickers=self.pickers,
+            registrar=self._registrar,
+            replanificar=self._replanificar,
+            llegar_a_despacho=self._llegar_a_despacho,
+            marcar_avance=self._marcar_avance,
+        )
 
         self.waves = []
         self._cargar_waves()
@@ -191,10 +197,16 @@ class Simulacion:
             ids_vistos.add(id_wave)
             normalizadas.append({"id": id_wave, "products": productos})
 
+        self.planificador = PlanificadorViajesV(
+            self.nav,
+            self.productos,
+            self.warehouse.racks,
+            algoritmo_camino=self.algoritmo_camino,
+            estrategia=self.estrategia,
+        )
         self.asignador = Asignador(
             self.nav, self.warehouse.zonas_despacho, normalizadas,
-            estrategia=self.estrategia,
-            algoritmo_asignacion=self.algoritmo_asignacion,
+            evaluador_viaje=self.planificador.evaluar_viaje,
         )
         self.waves = self.asignador.waves
 
@@ -266,15 +278,21 @@ class Simulacion:
                 "tareas": tareas,
                 "estado": "EN_PROCESO",
             }
-            picker.pendientes = list(tareas.values())
+            orden = trabajo.get("orden_productos", list(tareas))
+            picker.pendientes = [tareas[pid] for pid in orden if pid in tareas]
+            agregados = {tarea["producto_id"] for tarea in picker.pendientes}
+            picker.pendientes.extend(
+                tarea for pid, tarea in tareas.items() if pid not in agregados
+            )
             picker.objetivo = None
             picker.ruta = []
             picker.destinos = set()
             picker.estado = "disponible"
-            self._ordenar_pendientes(picker)
             self._registrar(
                 f"{picker.id}: recibe el viaje {trabajo['id']} de {trabajo['wave_id']} "
-                f"({len(picker.pendientes)} productos)."
+                f"({len(picker.pendientes)} productos; "
+                f"{self.estrategia}, {self.algoritmo_camino}, "
+                f"distancia estimada {trabajo['distancia_estimada']:g})."
             )
 
     # ---------- ejecución de las waves asignadas ----------
@@ -292,66 +310,6 @@ class Simulacion:
 
         return {acceso}
     
-    def _nodo_acceso(self, picker, tarea):
-        """Obtiene la celda de acceso real al producto."""
-
-        producto = self.productos[tarea["producto_id"]]
-
-        accesos = self._accesos_producto(producto)
-
-        if not accesos:
-            return None
-
-        ruta = self.nav.camino(picker.pos, accesos)
-
-        if ruta is None:
-            return None
-
-        return ruta[-1] if ruta else picker.pos
-
-    def _ordenar_pendientes(self, picker):
-        """Reordena los pendientes del picker según la estrategia de recorrido.
-        Las tareas sin acceso quedan al final, en su orden original."""
-
-        tareas_por_nodo = {}
-        sin_acceso = []
-
-        for tarea in picker.pendientes:
-            nodo = self._nodo_acceso(picker, tarea)
-
-            if nodo is None:
-                sin_acceso.append(tarea)
-            elif nodo in tareas_por_nodo:
-                tareas_por_nodo[nodo].append(tarea)
-            else:
-                tareas_por_nodo[nodo] = [tarea]
-
-        if not tareas_por_nodo:
-            return
-
-        estrategia = ESTRATEGIAS[self.estrategia]
-
-        try:
-            plan = estrategia(self.nav.grafo, picker.pos, list(tareas_por_nodo))
-        except ValueError as error:
-            self._registrar(
-                f"{picker.id}: la estrategia '{self.estrategia}' falló ({error}); "
-                f"se mantiene el orden de la wave."
-            )
-            return
-
-        ordenadas = []
-        for nodo in plan["order"]:
-            ordenadas.extend(tareas_por_nodo[nodo])
-        ordenadas.extend(sin_acceso)
-
-        picker.pendientes = ordenadas
-
-        self._registrar(
-            f"{picker.id}: recorrido '{self.estrategia}' planificado, "
-            f"distancia {plan['total_distance']:g}."
-        )
-
     def _llegar_a_despacho(self, picker):
         """Entrega su viaje y vuelve a pedir trabajo al asignador."""
 
@@ -446,7 +404,7 @@ class Simulacion:
         self.hubo_avance = False
 
         # El orden de movimiento es determinista: primero los que trabajan.
-        for picker in sorted(self.pickers, key=_clave_turno):
+        for picker in self.colisiones.orden_movimiento():
             if picker.estado == "bloqueado":
                 continue
 
@@ -506,14 +464,8 @@ class Simulacion:
     # ---------- movimiento ----------
 
     def _ocupadas(self, picker):
-        """Celdas ocupadas por los demás pickers. Los que deambulan también
-        ocupan su celda: nadie pisa a nadie."""
-
-        ocupadas = set()
-        for otro in self.pickers:
-            if otro is not picker:
-                ocupadas.add(otro.pos)
-        return ocupadas
+        """Compatibilidad interna: delega la ocupación al gestor de colisiones."""
+        return self.colisiones.ocupadas(picker)
 
     def _avanzar(self, picker):
         if picker.estado == "deambulando":
@@ -661,54 +613,11 @@ class Simulacion:
             self._llegar_a_despacho(picker)
 
     def _mover(self, picker):
-        """Mueve al preparador una celda, sin ocupar celdas ajenas."""
+        """Compatibilidad interna: delega los movimientos con conflicto."""
+        self.colisiones.mover(picker)
 
-        if not picker.ruta:
-            return
-
-        siguiente = picker.ruta[0]
-
-        if siguiente in self._ocupadas(picker):
-            if picker.estado == "deambulando":
-                # Cede el paso: elige otro punto de patrulla el próximo tick.
-                picker.ruta = []
-                return
-
-            picker.estado = "esperando"
-            self._replanificar(picker)
-            return
-
-        # Evita movimientos de más de una celda.
-        distancia = (
-            abs(siguiente[0] - picker.pos[0])
-            + abs(siguiente[1] - picker.pos[1])
-        )
-
-        if distancia != 1:
-            picker.ruta = []
-
-            if picker.estado == "deambulando":
-                return
-
-            picker.estado = "esperando"
-            self._replanificar(picker)
-            return
-
-        anterior = picker.pos
-        picker.anterior = anterior
-        picker.pos = siguiente
-        picker.ruta.pop(0)
-
-        # Deambular no cuenta como avance del trabajo ni como recorrido.
-        if picker.estado != "deambulando":
-            picker.trail.append(siguiente)
-            picker.pasos_trabajo += 1
-            self.hubo_avance = True
-            self._registrar(f"{picker.id}: {anterior} -> {siguiente}.")
-
-        if picker.estado == "regresando" and picker.pos in picker.destinos:
-            picker.ruta = []
-            self._llegar_a_despacho(picker)
+    def _marcar_avance(self):
+        self.hubo_avance = True
 
     def _replanificar(self, picker):
             """Intenta encontrar una ruta alternativa."""
@@ -755,7 +664,7 @@ class Simulacion:
             "tick_trabajo": self.tick_trabajo,
             "estrategia": self.estrategia,
             "permitir_saltos": self.permitir_saltos,
-            "algoritmo_asignacion": self.algoritmo_asignacion,
+            "algoritmo_camino": self.algoritmo_camino,
             "saltos": sum(p.saltos for p in self.pickers),
             "pickers": [
                 {
@@ -827,13 +736,17 @@ class Simulacion:
 
         # La estrategia guardada vale también para las waves que faltan empezar.
         self.estrategia = estado.get("estrategia", self.estrategia)
+        if self.estrategia not in ESTRATEGIAS:
+            raise ValueError(f"Estrategia de recorrido desconocida: {self.estrategia}.")
         self.permitir_saltos = estado.get("permitir_saltos", self.permitir_saltos)
-        self.algoritmo_asignacion = estado.get(
-            "algoritmo_asignacion", self.algoritmo_asignacion
+        self.algoritmo_camino = estado.get(
+            "algoritmo_camino",
+            estado.get("algoritmo_asignacion", self.algoritmo_camino),
         )
-        self.asignador.configurar_algoritmo(self.algoritmo_asignacion)
-        self.asignador._cache_recorrido.clear()
-
+        if self.algoritmo_camino not in ALGORITMOS_CAMINO:
+            raise ValueError(
+                f"Algoritmo de camino desconocido: {self.algoritmo_camino}."
+            )
         self.reiniciar()
 
         trabajos_guardados = [
