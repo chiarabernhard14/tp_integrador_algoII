@@ -2,6 +2,7 @@ import sys
 from collections import deque
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from ProductoInaccesible import ProductoInaccesible
 from domain.validation import validate_positive_int
 from .DoorE import Door
 from .DispatchZoneE import DispatchZone
@@ -1101,7 +1102,7 @@ class Warehouse:
                 f"{p.id} ({p.nombre}, acceso={p.acceso})"
                 for p in inaccesibles
             )
-            raise ValueError(
+            raise ProductoInaccesible(
                 "No existe un camino dirigido desde el acceso de estos "
                 f"productos hasta ninguna zona de despacho: {detalle}."
             )
@@ -1156,7 +1157,7 @@ class Warehouse:
                 f"{p.id} ({p.nombre}, acceso={p.acceso})"
                 for p in inaccesibles
             )
-            raise ValueError(
+            raise ProductoInaccesible(
                 "No existe un camino dirigido desde ninguna zona de "
                 f"despacho hasta el acceso de estos productos: {detalle}."
             )
