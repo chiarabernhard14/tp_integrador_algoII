@@ -20,22 +20,33 @@ class PanelLateral:
 
     def _crear_botones(self):
         b = self.botones
-        b.append(Boton("algoritmo_a_estrella", "A*", 976, 104, 100, 30))
-        b.append(Boton("algoritmo_dijkstra", "Dijkstra", 1084, 104, 236, 30))
-        b.append(Boton("estrategia_orden", "Orden", 976, 148, 100, 28))
-        b.append(Boton("estrategia_cercania", "Cercanía", 1084, 148, 128, 28))
-        b.append(Boton("estrategia_zonas", "Zonas", 1220, 148, 100, 28))
-        b.append(Boton("iniciar", "Iniciar", 900, 198, 76, 38, (22, 163, 74)))
-        b.append(Boton("pausar", "Pausar", 982, 198, 76, 38))
-        b.append(Boton("continuar", "Continuar", 1064, 198, 84, 38))
-        b.append(Boton("reiniciar", "Reiniciar", 1154, 198, 84, 38))
-        b.append(Boton("paso", "Paso", 1244, 198, 76, 38))
-        b.append(Boton("vel_menos", "-", 1236, 248, 36, 30))
-        b.append(Boton("vel_mas", "+", 1284, 248, 36, 30))
-        b.append(Boton("generar", "Generar escenario", 900, 300, 204, 38))
-        b.append(Boton("cargar_escenario", "Cargar escenario", 1112, 300, 208, 38))
-        b.append(Boton("guardar_escenario", "Guardar escenario", 900, 348, 204, 38))
-        b.append(Boton("cargar_partida", "Cargar partida", 1112, 348, 208, 38))
+        # Grupo 1: Algoritmos de camino
+        b.append(Boton("algoritmo_a_estrella", "A*", 900, 92, 100, 32))
+        b.append(Boton("algoritmo_dijkstra", "Dijkstra", 1008, 92, 312, 32))
+        
+        # Grupo 2: Estrategias de recorrido
+        b.append(Boton("estrategia_orden", "Orden", 900, 152, 100, 30))
+        b.append(Boton("estrategia_cercania", "Cercanía", 1008, 152, 128, 30))
+        b.append(Boton("estrategia_zonas", "Zonas", 1144, 152, 176, 30))
+        
+        # Grupo 3: Controles de reproducción
+        b.append(Boton("iniciar", "Iniciar", 900, 202, 74, 38, (22, 163, 74)))
+        b.append(Boton("pausar", "Pausar", 980, 202, 74, 38))
+        b.append(Boton("continuar", "Continuar", 1060, 202, 82, 38))
+        b.append(Boton("reiniciar", "Reiniciar", 1148, 202, 80, 38))
+        b.append(Boton("paso", "Paso", 1234, 202, 86, 38))
+        
+        # Controles de velocidad
+        b.append(Boton("vel_menos", "-", 1236, 252, 38, 30))
+        b.append(Boton("vel_mas", "+", 1282, 252, 38, 30))
+        
+        # Grupo 4: Gestión de escenarios y partidas
+        b.append(Boton("generar", "Generar escenario", 900, 300, 202, 38))
+        b.append(Boton("cargar_escenario", "Cargar escenario", 1108, 300, 212, 38))
+        b.append(Boton("guardar_escenario", "Guardar escenario", 900, 348, 202, 38))
+        b.append(Boton("cargar_partida", "Cargar partida", 1108, 348, 212, 38))
+        
+        # Botón inferior de guardado
         b.append(Boton("guardar_partida", "Guardar partida", 900, 396, 420, 38))
 
     def boton_en(self, pos):
@@ -49,12 +60,16 @@ class PanelLateral:
         pygame.draw.rect(self.pantalla, cfg.BORDE_SUELO, (880, 20, 460, 860), 2, border_radius=18)
         p = self.pincel
         f = self.fuentes
-        p.texto("SIMULACIÓN", f.sub, cfg.ACENTO, 900, 76)
-        p.texto("Camino", f.mini, cfg.APAGADO, 900, 112)
-        p.texto("Recorrido", f.mini, cfg.APAGADO, 900, 156)
+        
+        # Títulos y etiquetas con fuente negrita (más gordas)
+        p.texto("SIMULACIÓN", f.negrita, cfg.ACENTO, 900, 40)
+        p.texto("Camino", f.chico, cfg.APAGADO, 900, 74)
+        p.texto("Recorrido", f.chico, cfg.APAGADO, 900, 134)
+        
         for boton in self.botones:
             self._dibujar_boton(boton)
-        p.texto(f"Velocidad  x{self.anim.velocidad():g}", f.chico, cfg.TEXTO, 900, 258)
+            
+        p.texto(f"Velocidad  x{self.anim.velocidad():g}", f.chico, cfg.TEXTO, 900, 260)
         self._dibujar_pickers()
 
     def _dibujar_boton(self, boton):
@@ -73,10 +88,11 @@ class PanelLateral:
             or (boton.nombre in estrategias
                 and self.sesion.estrategia_recorrido == estrategias[boton.nombre])
         )
-        selector = boton.nombre in algoritmos or boton.nombre in estrategias
+        
+        # Forzamos f.negrita en todos los botones para que el texto sea más grueso
         dibujar_boton(
             self.pantalla,
-            self.fuentes.chico if selector else self.fuentes.normal,
+            self.fuentes.negrita,
             boton.rect,
             boton.texto,
             boton.color,
@@ -88,33 +104,34 @@ class PanelLateral:
         f = self.fuentes
         pickers = self.sesion.estado["pickers"]
         visibles = pickers[:cfg.MAX_TARJETAS]
-        p.texto(f"PICKERS ({len(pickers)})", f.mini, cfg.APAGADO, 900, 480)
-        y_inicio = 510 if len(visibles) != 1 else 640
-        y_final = 790
-        alto_tarjeta = 62
-        if len(visibles) > 1:
-            paso = min(220, max(alto_tarjeta + 12, (y_final - y_inicio) // (len(visibles) - 1)))
-        else:
-            paso = 0
+        
+        # Ubicación del título de pickers un poco más abajo del último botón
+        p.texto(f"PICKERS ({len(pickers)})", f.mini, cfg.APAGADO, 900, 448)
+        
+        y_inicio = 472
+        alto_tarjeta = 58
+        paso = 66  # Mantiene las tarjetas de los pickers juntas y compactas
+        
         for i, picker in enumerate(visibles):
             y = y_inicio + i * paso
             color = cfg.COLORES_PICKER[i % len(cfg.COLORES_PICKER)]
             pygame.draw.rect(self.pantalla, cfg.TARJETA, (900, y, 420, alto_tarjeta), border_radius=8)
             pygame.draw.rect(self.pantalla, cfg.BORDE, (900, y, 420, alto_tarjeta), 1, border_radius=8)
-            pygame.draw.rect(self.pantalla, color, (900, y + 9, 5, 44), border_radius=2)
-            p.texto(picker["id"], f.negrita, cfg.TEXTO, 914, y + 7)
+            pygame.draw.rect(self.pantalla, color, (900, y + 8, 5, 42), border_radius=2)
+            p.texto(picker["id"], f.negrita, cfg.TEXTO, 914, y + 6)
             nombre = cfg.NOMBRE_ESTADO_PICKER.get(picker["estado"], picker["estado"])
             color_estado = cfg.COLOR_ESTADO_PICKER.get(picker["estado"], cfg.TEXTO)
-            p.texto(nombre, f.chico, color_estado, 1310, y + 10, "der")
+            p.texto(nombre, f.chico, color_estado, 1310, y + 8, "der")
             objetivo = picker["objetivo"] if picker["objetivo"] is not None else "-"
             capacidad = self.sesion.capacidades.get(picker["id"], 0)
             detalle = (f"Objetivo {objetivo}   Pend. {len(picker['pendientes'])}   "
                        f"A bordo {len(picker['recogidos'])}   Cap. {capacidad:g} kg")
-            p.texto(p.recortar(detalle, f.chico, 400), f.chico, cfg.APAGADO, 914, y + 39)
+            p.texto(p.recortar(detalle, f.chico, 400), f.chico, cfg.APAGADO, 914, y + 34)
+            
         if len(pickers) > cfg.MAX_TARJETAS:
+            y_mas = y_inicio + len(visibles) * paso
             p.texto(f"+{len(pickers) - cfg.MAX_TARJETAS} pickers más",
-                    f.chico, cfg.APAGADO, 1310, 480, "der")
-
+                    f.mini, cfg.APAGADO, 1310, y_mas, "der")
 
 class PanelWaves:
     """Columna de ticks, estado de cada wave y registro de eventos."""
