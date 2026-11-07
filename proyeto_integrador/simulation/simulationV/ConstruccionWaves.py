@@ -1,6 +1,6 @@
 from dataclasses import replace
-
 from domain.Wave import Wave
+from domain.validation import validate_positive_int
 
 
 def dividir_registros(registros, max_unidades):
@@ -24,14 +24,8 @@ def dividir_registros(registros, max_unidades):
 
 
 def construir_waves(clusters, max_pedidos, max_unidades):
-    for nombre, valor in (
-        ("max_pedidos", max_pedidos),
-        ("max_unidades", max_unidades),
-    ):
-        if not isinstance(valor, int) or isinstance(valor, bool):
-            raise TypeError(f"{nombre} debe ser un entero.")
-        if valor <= 0:
-            raise ValueError(f"{nombre} debe ser mayor a cero.")
+    validate_positive_int(max_pedidos, "max_pedidos")
+    validate_positive_int(max_unidades, "max_unidades")
 
     waves = []
     numero_wave = 1
