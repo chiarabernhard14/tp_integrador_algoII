@@ -3,7 +3,7 @@ from collections import Counter
 
 def calcular_perfil_prioridades(wave):
     """
-    Perfil lexicográfico (P5, P4, P3, P2, P1).
+    (P5, P4, P3, P2, P1)
     Se cuenta cada registro producto-pedido, no la cantidad de unidades.
     """
     conteo = Counter(item["order"].prioridad for item in wave.products)
