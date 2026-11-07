@@ -17,7 +17,7 @@ for ruta in (VISUALIZACION, RAIZ):
         sys.path.insert(0, ruta)
 
 # Los imports del proyecto van después de armar sys.path.
-from simulation.simulationV.ScenarioV import generar_escenario, validar_escenario  # noqa: E402
+from simulation.simulationV.ScenarioV import generar_escenario  # noqa: E402
 from simulation.simulationV.PersistenceV import (                        # noqa: E402
     cargar_escenario,
     cargar_partida,
@@ -35,7 +35,6 @@ def main():
     if args.escenario:
         try:
             datos_iniciales = cargar_escenario(args.escenario)
-            validar_escenario(datos_iniciales)
         except ValueError as error:
             print(f"No se pudo cargar el escenario: {error}")
             datos_iniciales = None
@@ -53,7 +52,13 @@ def main():
     # El paquete se deduce de la carpeta donde estén estos archivos (real, prueba, etc.).
     paquete = f"visualization.{os.path.basename(CARPETA)}"
     App = importlib.import_module(f"{paquete}.app").App
-    App(datos_iniciales, partida_guardada=partida_guardada).correr()
+    # El generador, el cargador de escenarios y el cargador de partidas validan
+    # sus datos; no hace falta repetir esa validación al crear la sesión.
+    App(
+        datos_iniciales,
+        partida_guardada=partida_guardada,
+        datos_validados=True,
+    ).correr()
     sys.exit(0)
 
 

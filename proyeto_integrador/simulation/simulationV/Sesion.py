@@ -22,6 +22,7 @@ class Sesion:
     def __init__(
         self, datos, waves=None, generador_waves=None,
         algoritmo_camino="a_estrella", estrategia_recorrido="cercania",
+        datos_validados=False,
     ):
         """
         - waves: lista de waves ya generadas por el módulo de tu compañera.
@@ -32,7 +33,10 @@ class Sesion:
         self.generador_waves = generador_waves
         self.algoritmo_camino = algoritmo_camino
         self.estrategia_recorrido = estrategia_recorrido
-        self.usar_datos(datos, waves)
+        if datos_validados:
+            self._usar_datos_validados(datos, waves)
+        else:
+            self.usar_datos(datos, waves)
 
     # ---------- estado ----------
 
@@ -127,6 +131,10 @@ class Sesion:
 
     def usar_datos(self, datos, waves=None):
         validar_escenario(datos)
+        self._usar_datos_validados(datos, waves)
+
+    def _usar_datos_validados(self, datos, waves=None):
+        """Inicializa la simulación con datos ya validados por su origen."""
         waves_listas = self._obtener_waves(datos, waves)
         self.usar_simulacion(
             Simulacion(
@@ -162,7 +170,7 @@ class Sesion:
         waves = self.sim.waves_entrada
         self.algoritmo_camino = algoritmo
         self.estrategia_recorrido = estrategia
-        self.usar_datos(self.sim.datos, waves)
+        self._usar_datos_validados(self.sim.datos, waves)
         return True
 
     def seleccionar_algoritmo_camino(self, algoritmo):
@@ -184,10 +192,12 @@ class Sesion:
         return len(completo["pedidos"])
 
     def generar(self, valores):
-        self.usar_datos(generar_escenario(**valores))
+        # generar_escenario ya valida el resultado antes de devolverlo.
+        self._usar_datos_validados(generar_escenario(**valores))
 
     def cargar_escenario(self, ruta):
-        self.usar_datos(cargar_escenario(ruta))
+        # cargar_escenario ya valida el contenido leído.
+        self._usar_datos_validados(cargar_escenario(ruta))
 
     def guardar_escenario(self, ruta):
         guardar_escenario(ruta, self.sim.datos)

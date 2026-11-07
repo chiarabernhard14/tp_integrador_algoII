@@ -23,7 +23,10 @@ from .widgets import Alerta
 class App:
 
    
-    def __init__(self, datos, waves=None, generador_waves=None, partida_guardada=None):
+    def __init__(
+        self, datos, waves=None, generador_waves=None, partida_guardada=None,
+        datos_validados=False,
+    ):
         pygame.init()
         titulo = "Wave Picking - Simulacion"
         pygame.display.set_caption(titulo)
@@ -41,7 +44,12 @@ class App:
         self.pincel = Pincel(self.pantalla)
         self.alerta = Alerta(self.fuentes.alerta_titulo, self.fuentes.alerta_texto)
 
-        self.sesion = Sesion(datos, waves=waves, generador_waves=generador_waves)
+        self.sesion = Sesion(
+            datos,
+            waves=waves,
+            generador_waves=generador_waves,
+            datos_validados=datos_validados,
+        )
         self._autoguardado_alerta_mostrada = False
         if partida_guardada is not None:
             self.sesion.usar_partida(datos, partida_guardada)
