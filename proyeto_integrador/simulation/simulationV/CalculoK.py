@@ -1,16 +1,11 @@
 from math import ceil
 
+from domain.validation import validate_positive_int
 
 def calcular_k(registros, max_unidades, max_pedidos):
     """Calcula la cantidad inicial de clusters según capacidad y demanda."""
-    for nombre, valor in (
-        ("max_unidades", max_unidades),
-        ("max_pedidos", max_pedidos),
-    ):
-        if not isinstance(valor, int) or isinstance(valor, bool):
-            raise TypeError(f"{nombre} debe ser un entero.")
-        if valor <= 0:
-            raise ValueError(f"{nombre} debe ser mayor a cero.")
+    validate_positive_int(max_unidades, "max_unidades")
+    validate_positive_int(max_pedidos, "max_pedidos")
 
     if not registros:
         return 0
