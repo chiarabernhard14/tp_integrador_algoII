@@ -33,16 +33,23 @@ class Rack(RectangularElement):
         if not isinstance(value, list):
             raise TypeError("stacks debe ser una lista.")
 
+        productos = []
         for line in value:
             if not isinstance(line, list):
                 raise TypeError("Cada lado del rack debe ser una lista.")
             for pila in line:
                 if not isinstance(pila, list):
                     raise TypeError("Cada pila debe ser una lista.")
-                for prod in pila:
-                    self.add_product(prod)
-            
-        self._stacks = value
+                for product in pila:
+                    if not isinstance(product, Product):
+                        raise TypeError("Cada elemento de una pila debe ser un producto.")
+                    productos.append(product)
+
+        # Instalar primero pilas vacías: add_product_rack usa acc_stack,
+        # que consulta self.stacks, y coloca cada producto en su coordenada.
+        self._stacks = self.init_stacks()
+        for product in productos:
+            self.add_product_rack(product)
 
     def acc_stack(self,x,y):
         if self.ancho == 2 and (stack_y := y - self.ubicacion[1]) >= 0:

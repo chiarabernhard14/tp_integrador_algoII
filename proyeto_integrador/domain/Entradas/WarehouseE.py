@@ -347,9 +347,6 @@ class Warehouse:
         if element.ubicacion[1] + element.alto > self._largo_y:
             raise ValueError("El elemento excede el largo del almacén.")
 
-    def _cells_of(self, element):
-        return set(element.cells())
-
     def _occupied_by(self, elements):
         
         cells = set()
@@ -483,13 +480,12 @@ class Warehouse:
 
         return rects
 
-    def build_reduced_graph_v2(self, full_graph=None):
+    def build_reduced_graph_v2(self):
         """Construye un grafo reducido con esquinas, accesos y proyecciones rectas."""
-        
+
         if not self.graph:
             self.build_graph()
             return self.reduced_graph
-        full_graph = self.graph
 
         directions = ((1, 0), (-1, 0), (0, 1), (0, -1))
         vertice_por_celda = {
@@ -499,7 +495,7 @@ class Warehouse:
 
         def has_edge(origin, destination):
             return any(neighbor == destination
-                       for neighbor, _ in full_graph.get(origin, ()))
+                       for neighbor, _ in self.graph.get(origin, ()))
 
         product_access = self._acceso_cargados
      
@@ -660,7 +656,6 @@ class Warehouse:
         
 
     def build_graph(self):
-        #cant_pasillos=self.generar_pasillos_faltantes()
         self.generar_pasillos_faltantes()
         
         vertice_por_celda = {
@@ -708,8 +703,7 @@ class Warehouse:
                 if (a.sentido != "O" and vertice_destino is not None
                         and vertice_destino.pasillo.sentido != "O"):
                     agregar_arista(v, destino, a, vertice_destino.pasillo)
-        self.build_reduced_graph_v2(full_graph=self.graph)
-        #return cant_pasillos
+        self.build_reduced_graph_v2()
 
     @staticmethod
     def _celdas_rectangulo(vertice_a, vertice_b, vertice_c=None, vertice_d=None):
@@ -741,11 +735,18 @@ class Warehouse:
         celdas_eliminadas = set()
         pasillos_completos_bloqueados = set(self._pasillos_bloqueados)
 
+        # Mapa celda -> pasillo propietario sobre todas las celdas activas.
+        # Se mantiene quitando las celdas a medida que se eliminan.
+        propietario_por_celda = {
+            vertice.ubicacion: vertice.pasillo for vertice in self.celdas
+        }
+
         while True:
+            # Nodos activos del grafo reducido con su pasillo dueño.
             propietario_por_nodo = {
-                vertice.ubicacion: vertice.pasillo
-                for vertice in self.celdas
-                if vertice.ubicacion in self.reduced_graph
+                nodo: pasillo
+                for nodo, pasillo in propietario_por_celda.items()
+                if nodo in self.reduced_graph
             }
             nodos_por_pasillo = {}
             for nodo, pasillo in propietario_por_nodo.items():
@@ -760,26 +761,32 @@ class Warehouse:
                 if not nodos:
                     continue
 
-                ids_salida = set(pasillo.salida)
-                salidas_directas = {
-                    origen
-                    for origen in nodos
-                    for destino, _peso in self.reduced_graph.get(origen, ())
-                    if propietario_por_nodo.get(destino) is not None
-                    and propietario_por_nodo[destino].id in ids_salida
-                    and origen in pasillo.salida[
-                        propietario_por_nodo[destino].id
-                    ]
-                }
+                # --- Salidas directas: usa pasillo.salida (ya guardado) ---
+                # pasillo.salida[id_destino] = celdas de este pasillo que
+                # conectan hacia el pasillo id_destino.
+                salidas_directas = set()
+                for id_destino, celdas_origen in pasillo.salida.items():
+                    if id_destino not in self._pasillos:
+                        continue
+                    for origen in celdas_origen:
+                        if origen not in nodos:
+                            continue
+                        for destino, _peso in self.reduced_graph.get(origen, ()):
+                            if (
+                                propietario_por_nodo.get(destino) is not None
+                                and propietario_por_nodo[destino].id == id_destino
+                            ):
+                                salidas_directas.add(origen)
+                                break
 
+                # Predecesores dentro del pasillo (grafo inverso local).
                 predecesores = {nodo: set() for nodo in nodos}
                 for origen in nodos:
                     for destino, _peso in self.reduced_graph.get(origen, ()):
                         if destino in nodos:
                             predecesores[destino].add(origen)
 
-                # Nodos desde los que se puede seguir por el pasillo hasta una
-                # conexión de salida registrada en Aisle.salida.
+                # Nodos que pueden seguir hasta una salida registrada.
                 pueden_salir = set(salidas_directas)
                 pendientes = list(salidas_directas)
                 while pendientes:
@@ -789,29 +796,22 @@ class Warehouse:
                             pueden_salir.add(anterior)
                             pendientes.append(anterior)
 
-                # Las claves de entrada restringen el origen al pasillo que
-                # realmente conecta con este; sus listas dan las celdas de acceso.
+                # --- Entradas: usa pasillo.entrada (ya guardado) ---
+                # pasillo.entrada[id_origen] = celdas del pasillo id_origen que
+                # conectan hacia este pasillo.
                 entradas = set()
                 for id_origen, celdas_origen in pasillo.entrada.items():
-                    origenes_reducidos = {
-                        celda for celda in celdas_origen
-                        if celda in self.reduced_graph
-                        and propietario_por_nodo.get(celda) is not None
-                        and propietario_por_nodo[celda].id == id_origen
-                    }
-                    origenes_reducidos.update(
-                        nodo for nodo in nodos_por_pasillo.get(id_origen, ())
-                        if any(
-                            destino in nodos
-                            for destino, _peso in self.reduced_graph.get(nodo, ())
-                        )
-                    )
-                    entradas.update(
-                        destino
-                        for origen in origenes_reducidos
-                        for destino, _peso in self.reduced_graph.get(origen, ())
-                        if destino in nodos
-                    )
+                    if id_origen not in self._pasillos:
+                        continue
+                    for origen in celdas_origen:
+                        if (
+                            origen not in propietario_por_nodo
+                            or propietario_por_nodo[origen].id != id_origen
+                        ):
+                            continue
+                        for destino, _peso in self.reduced_graph.get(origen, ()):
+                            if destino in nodos:
+                                entradas.add(destino)
 
                 alcanzables = set(entradas)
                 pendientes = list(entradas)
@@ -827,9 +827,6 @@ class Warehouse:
             if not nodos_atrapados:
                 break
 
-            propietario_por_celda = {
-                vertice.ubicacion: vertice.pasillo for vertice in self.celdas
-            }
             pasillos_afectados = {
                 propietario_por_nodo[nodo]
                 for nodo in nodos_atrapados
@@ -869,16 +866,12 @@ class Warehouse:
                             componente.add(vecino)
                             pendientes_componente.append(vecino)
 
-                    # Incluye el vértice seguro que delimita cada extremo del
-                    # sector; el rectángulo elimina también ese perímetro.
                     vertices_limite = set(componente)
                     for nodo in componente:
                         vertices_limite.update(
                             vecinos_pasillo[nodo] - nodos_sector
                         )
 
-                    # Cada componente atrapado se expande a un rectángulo que
-                    # cubre todo el ancho del pasillo entre sus vértices límite.
                     x_min = min(nodo[0] for nodo in vertices_limite)
                     x_max = max(nodo[0] for nodo in vertices_limite)
                     y_min = min(nodo[1] for nodo in vertices_limite)
@@ -919,7 +912,7 @@ class Warehouse:
                             return True
                 return False
 
-            # Limpia las aristas de entrada hacia los sectores removidos usando
+            # Limpia aristas de entrada hacia sectores removidos usando
             # la relación de origen guardada por cada pasillo destino.
             for pasillo_destino in self._pasillos.values():
                 celdas_destino = celdas_sector & set(pasillo_destino.cells())
@@ -961,24 +954,25 @@ class Warehouse:
             self._aisle_cell.difference_update(celdas_sector)
             celdas_eliminadas.update(celdas_sector)
 
-            # Actualiza entrada/salida desde sus índices existentes, sin
-            # reconstruirlos recorriendo todas las celdas del grafo completo.
-            celdas_activas_por_pasillo = {}
-            for vertice in self.celdas:
-                celdas_activas_por_pasillo.setdefault(
-                    vertice.pasillo.id, set()
-                ).add(vertice.ubicacion)
+            # Mantiene actualizado el mapa celda -> pasillo: solo quita
+            # las eliminadas, no recorre todo de nuevo.
+            for celda in celdas_sector:
+                propietario_por_celda.pop(celda, None)
+
+            # Actualiza entrada/salida filtrando las listas ya guardadas,
+            # sin reconstruir índices desde cero recorriendo self.celdas.
             for pasillo_origen in self._pasillos.values():
-                for id_destino, origenes in tuple(pasillo_origen.salida.items()):
+                for id_destino in tuple(pasillo_origen.salida.keys()):
                     pasillo_destino = self._pasillos.get(id_destino)
                     if pasillo_destino is None:
                         pasillo_origen.salida.pop(id_destino, None)
                         continue
-                    destinos_activos = celdas_activas_por_pasillo.get(
-                        id_destino, set()
-                    )
+                    destinos_activos = {
+                        nodo for nodo, p in propietario_por_celda.items()
+                        if p.id == id_destino
+                    }
                     origenes_vivos = [
-                        origen for origen in origenes
+                        origen for origen in pasillo_origen.salida[id_destino]
                         if origen not in celdas_sector
                         and any(
                             destino in destinos_activos
@@ -1003,6 +997,15 @@ class Warehouse:
         self._pasillos_bloqueados = pasillos_completos_bloqueados
         return sorted(celdas_eliminadas)
 
+    def _nodos_despacho_en_grafo(self):
+        """Celdas del grafo reducido adyacentes a alguna zona de despacho."""
+        nodos = set()
+        for zona in self._zonas_despacho.values():
+            nodos.update(
+                self._adjacent_cells_of(zona) & self.reduced_graph.keys()
+            )
+        return nodos
+
     def validar_acceso_productos_a_despacho(self):
         """Valida que cada producto tenga un camino dirigido hacia despacho.
 
@@ -1019,36 +1022,72 @@ class Warehouse:
                 "el warehouse no tiene zonas de despacho."
             )
 
-        nodos_despacho = set()
-        for zona in self._zonas_despacho.values():
-            nodos_despacho.update(
-                self._adjacent_cells_of(zona) & self.reduced_graph.keys()
-            )
+        nodos_despacho = self._nodos_despacho_en_grafo()
+
+        # resultado_por_nodo: nodo -> True si se sabe que llega a despacho,
+        # False si se sabe que NO llega. 
+        resultado_por_nodo = {nodo: True for nodo in nodos_despacho}
 
         accesos_con_ruta = set()
         for origen in self._acceso_cargados:
+            if origen in resultado_por_nodo:
+                if resultado_por_nodo[origen]:
+                    accesos_con_ruta.add(origen)
+                # Si se sabe que no llega, o se acaba de confirmar que llega,
+                # no hace falta volver a hacer BFS desde este acceso.
+                continue
             if origen not in self.reduced_graph:
+                resultado_por_nodo[origen] = False
                 continue
 
             padres = {origen: None}
+            visitados = {origen}
             pendientes = deque([origen])
             destino = None
+
             while pendientes and destino is None:
                 actual = pendientes.popleft()
+
+                # Si llegamos a un nodo ya resuelto, usamos su resultado
+                # en lugar de seguir explorando desde él.
+                if actual in resultado_por_nodo:
+                    if resultado_por_nodo[actual]:
+                        destino = actual
+                        break
+                    # Se sabe que no llega a despacho: no expandimos este nodo.
+                    continue
+
                 if actual in nodos_despacho:
                     destino = actual
                     break
+
                 for vecino, _peso in self.reduced_graph.get(actual, ()):
-                    if vecino not in padres:
+                    if vecino not in visitados:
+                        if vecino in resultado_por_nodo:
+                            if resultado_por_nodo[vecino]:
+                                padres[vecino] = actual
+                                destino = vecino
+                                break
+                            # Se sabe que no llega: no lo agregamos a la cola.
+                            continue
                         padres[vecino] = actual
+                        visitados.add(vecino)
                         pendientes.append(vecino)
 
             if destino is not None:
+                # Marca el camino recorrido (origen hasta destino) como que
+                # llega a despacho, para reusarlo en futuros BFS.
                 actual = destino
                 while actual is not None:
                     if actual in self._acceso_cargados:
                         accesos_con_ruta.add(actual)
+                    resultado_por_nodo[actual] = True
                     actual = padres[actual]
+            else:
+                # BFS agotado sin encontrar despacho: ninguno de los nodos
+                # visitados llega a despacho, se guarda para no recalcularlo.
+                for nodo in visitados:
+                    resultado_por_nodo[nodo] = False
 
         accesos_sin_ruta = self._acceso_cargados - accesos_con_ruta
 
@@ -1084,23 +1123,30 @@ class Warehouse:
                 "el warehouse no tiene zonas de despacho."
             )
 
-        nodos_despacho = set()
-        for zona in self._zonas_despacho.values():
-            nodos_despacho.update(
-                self._adjacent_cells_of(zona) & self.reduced_graph.keys()
-            )
+        nodos_despacho = self._nodos_despacho_en_grafo()
 
         visitados = set(nodos_despacho)
         pendientes = deque(nodos_despacho)
 
-        while pendientes:
+        # Accesos de producto que aún faltan por alcanzar desde despacho.
+        # Los que ya están entre los nodos iniciales se dan por alcanzados.
+        accesos_restantes = set(self._acceso_cargados)
+        accesos_restantes.difference_update(visitados)
+
+        while pendientes and accesos_restantes:
             actual = pendientes.popleft()
             for vecino, _peso in self.reduced_graph.get(actual, ()):
                 if vecino not in visitados:
                     visitados.add(vecino)
                     pendientes.append(vecino)
+                    if vecino in accesos_restantes:
+                        accesos_restantes.discard(vecino)
+            if not accesos_restantes:
+                # Ya se alcanzaron todas las celdas de acceso: no hace falta
+                # seguir explorando el grafo.
+                break
 
-        accesos_sin_ruta = self._acceso_cargados - visitados
+        accesos_sin_ruta = accesos_restantes
         inaccesibles = [
             producto for producto in self._productos.values()
             if producto.acceso in accesos_sin_ruta
