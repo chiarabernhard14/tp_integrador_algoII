@@ -46,15 +46,17 @@ def _lineas_wave(wave):
 class Asignador:
     """Asigna como máximo un viaje por picker libre en cada ronda.
 
-    Backtracking explora las asignaciones de las unidades pendientes. Se prioriza
-    el orden de la wave y, entre las asignaciones equivalentes, se minimiza el
-    mayor recorrido estimado; luego, la distancia total. Las restricciones de
-    peso, acceso, regreso y capacidad de las zonas se comprueban antes de elegir.
+    Usa backtracking cuando (pickers + 1) ** unidades no supera el umbral
+    configurado y una asignación voraz determinista en rondas más grandes.
     """
 
-    def __init__(self, nav, zonas, waves, evaluador_viaje):
+    def __init__(
+        self, nav, zonas, waves, evaluador_viaje,
+        max_combinaciones_exactas=5000,
+    ):
         self.nav = nav
         self.evaluador_viaje = evaluador_viaje
+        self.max_combinaciones_exactas = max_combinaciones_exactas
         self.zonas = {}
         for zona in zonas.values():
             celdas = set()
@@ -77,6 +79,7 @@ class Asignador:
         self.peso_de_trabajo = {}
         self.zona_de_trabajo = {}
         self.imposibles = []
+        self._estado_busqueda_ronda = None
 
         for indice, wave in enumerate(waves, 1):
             wave_id, lineas = _lineas_wave(wave)
@@ -102,125 +105,228 @@ class Asignador:
 
     def _opciones_de_viaje(self, picker, productos, peso, wave):
         opciones = []
-        planes = {}
+        clave = (picker.id, frozenset(productos))
+        planes = self._cache_planes.get(clave)
+        if planes is None:
+            planes = {}
+            for zona_id in sorted(self.zonas):
+                zona = self.zonas[zona_id]
+                plan = self.evaluador_viaje(
+                    picker,
+                    set(productos),
+                    wave["orden"],
+                    zona_id,
+                    zona["celdas"],
+                    self.accesos,
+                )
+                if plan is not None:
+                    planes[zona_id] = plan
+            self._cache_planes[clave] = planes
+
         for zona_id in sorted(self.zonas):
             zona = self.zonas[zona_id]
             if zona["restante"] + EPSILON < peso:
                 continue
-            plan = self.evaluador_viaje(
-                picker,
-                set(productos),
-                wave["orden"],
-                zona_id,
-                zona["celdas"],
-                self.accesos,
-            )
+            plan = planes.get(zona_id)
             if plan is not None:
                 distancia = plan["total_distance"]
                 opciones.append((distancia, zona_id))
-                planes[zona_id] = plan
-        return opciones, planes
+        return opciones, {zona_id: planes[zona_id] for _, zona_id in opciones}
 
     def _elegir_zonas(self, activos, opciones, cargas):
+        if len(activos) > 8:
+            return self._elegir_zonas_voraz(activos, opciones, cargas)
+
         mejor = None
+        estado = {
+            "activos": activos,
+            "opciones": opciones,
+            "cargas": cargas,
+            "usados": {zona_id: 0.0 for zona_id in self.zonas},
+            "elegidos": {},
+            "mejor": mejor,
+        }
+        self._estado_busqueda_zonas = estado
+        try:
+            self._buscar_zonas(0)
+        finally:
+            self._estado_busqueda_zonas = None
+        return estado["mejor"]
+
+    def _buscar_zonas(self, pos):
+        estado = self._estado_busqueda_zonas
+        activos = estado["activos"]
+        elegidos = estado["elegidos"]
+        if pos == len(activos):
+            distancias = [elegidos[i][0] for i in activos]
+            clave = (
+                max(distancias, default=0),
+                sum(distancias),
+                tuple((self._ids[i], elegidos[i][1]) for i in activos),
+            )
+            mejor = estado["mejor"]
+            if mejor is None or clave < mejor[0]:
+                estado["mejor"] = (clave, dict(elegidos))
+            return
+
+        indice = activos[pos]
+        for distancia, zona_id in estado["opciones"][indice]:
+            if (
+                estado["usados"][zona_id] + estado["cargas"][indice]
+                > self.zonas[zona_id]["restante"] + EPSILON
+            ):
+                continue
+            distancia_maxima_actual = max(
+                (elegidos[j][0] for j in activos[:pos]), default=0
+            )
+            mejor = estado["mejor"]
+            if (
+                mejor is not None
+                and max(distancia_maxima_actual, distancia) > mejor[0][0]
+            ):
+                continue
+            estado["usados"][zona_id] += estado["cargas"][indice]
+            elegidos[indice] = (distancia, zona_id)
+            self._buscar_zonas(pos + 1)
+            estado["usados"][zona_id] -= estado["cargas"][indice]
+            del elegidos[indice]
+
+    def _elegir_zonas_voraz(self, activos, opciones, cargas):
+        orden = sorted((-cargas[i], self._ids[i], i) for i in activos)
         usados = {zona_id: 0.0 for zona_id in self.zonas}
         elegidos = {}
+        for _, _, indice in orden:
+            factibles = sorted(opciones[indice], key=lambda opcion: (opcion[0], opcion[1]))
+            for distancia, zona_id in factibles:
+                if (
+                    usados[zona_id] + cargas[indice]
+                    <= self.zonas[zona_id]["restante"] + EPSILON
+                ):
+                    usados[zona_id] += cargas[indice]
+                    elegidos[indice] = (distancia, zona_id)
+                    break
+            else:
+                return None
 
-        def buscar(pos):
-            nonlocal mejor
-            if pos == len(activos):
-                ds = [elegidos[i][0] for i in activos]
-                clave = (max(ds, default=0), sum(ds), tuple((self._ids[i], elegidos[i][1]) for i in activos))
-                if mejor is None or clave < mejor[0]:
-                    mejor = (clave, dict(elegidos))
-                return
-
-            i = activos[pos]
-            for distancia, zona_id in opciones[i]:
-                if usados[zona_id] + cargas[i] > self.zonas[zona_id]["restante"] + EPSILON:
-                    continue
-                if mejor is not None and max(max((elegidos[j][0] for j in activos[:pos]), default=0), distancia) > mejor[0][0]:
-                    continue
-                usados[zona_id] += cargas[i]
-                elegidos[i] = (distancia, zona_id)
-                buscar(pos + 1)
-                usados[zona_id] -= cargas[i]
-                del elegidos[i]
-
-        buscar(0)
-        return mejor
+        distancias = [elegidos[i][0] for i in activos]
+        clave = (
+            max(distancias, default=0),
+            sum(distancias),
+            tuple((self._ids[i], elegidos[i][1]) for i in activos),
+        )
+        return clave, elegidos
 
     def _resolver_ronda(self, wave, pickers):
+        self._cache_planes = {}
         self._pickers = list(pickers)
         self._ids = [_id(p) for p in pickers]
         unidades = []
         for producto_id in wave["orden"]:
             unidades.extend([producto_id] * wave["pendiente"].get(producto_id, 0))
 
-        asignados = [[] for _ in pickers]
-        cargas = [0.0 for _ in pickers]
-        bits = []
-        mejor = None
+        # La búsqueda exacta crece exponencialmente con la cantidad de unidades.
+        # Para rondas grandes usamos una asignación voraz determinista: la consigna
+        # pide una estrategia justificada, pero no una solución global óptima.
+        combinaciones = 1
+        for _ in unidades:
+            combinaciones *= len(pickers) + 1
+            if combinaciones > self.max_combinaciones_exactas:
+                break
+        if combinaciones > self.max_combinaciones_exactas:
+            return self._resolver_ronda_voraz(wave, pickers, unidades)
 
-        def buscar(k, primer_picker=0):
-            nonlocal mejor
-            if mejor is not None and tuple(bits) < mejor[0][:len(bits)]:
-                return
-            if k == len(unidades):
-                activos = [i for i, productos in enumerate(asignados) if productos]
-                evaluaciones = {
-                    i: self._opciones_de_viaje(
-                        pickers[i], asignados[i], cargas[i], wave
-                    )
-                    for i in activos
-                }
-                opciones = {i: evaluaciones[i][0] for i in activos}
-                if any(not opciones[i] for i in activos):
-                    return
-                zonas = self._elegir_zonas(activos, opciones, cargas)
-                if zonas is None:
-                    return
-                vector = tuple(bits)
-                if mejor is None or vector > mejor[0] or (vector == mejor[0] and zonas[0] < mejor[1]):
-                    planes = {i: evaluaciones[i][1] for i in activos}
-                    mejor = (
-                        vector,
-                        zonas[0],
-                        [list(x) for x in asignados],
-                        list(cargas),
-                        zonas[1],
-                        planes,
-                    )
-                return
-
-            producto_id = unidades[k]
-            peso = self.productos[producto_id].peso_kg
-            mismo_producto_despues = (
-                k + 1 < len(unidades) and unidades[k + 1] == producto_id
-            )
-            if self.accesos.get(producto_id) is not None:
-                for i in range(primer_picker, len(pickers)):
-                    picker = pickers[i]
-                    if cargas[i] + peso > _capacidad(picker) + EPSILON:
-                        continue
-                    cargas[i] += peso
-                    asignados[i].append(producto_id)
-                    bits.append(1)
-                    buscar(k + 1, i if mismo_producto_despues else 0)
-                    bits.pop()
-                    asignados[i].pop()
-                    cargas[i] -= peso
-
-            codigo_omitir = len(pickers)
-            if codigo_omitir >= primer_picker:
-                bits.append(0)
-                buscar(k + 1, codigo_omitir if mismo_producto_despues else 0)
-                bits.pop()
-
-        buscar(0)
+        self._estado_busqueda_ronda = {
+            "wave": wave,
+            "pickers": pickers,
+            "unidades": unidades,
+            "asignados": [[] for _ in pickers],
+            "cargas": [0.0 for _ in pickers],
+            "bits": [],
+            "mejor": None,
+        }
+        try:
+            self._buscar_asignaciones(0)
+        finally:
+            estado = self._estado_busqueda_ronda
+            self._estado_busqueda_ronda = None
+        mejor = estado["mejor"]
         if mejor is None:
             return []
 
+        return self._crear_trabajos(wave, pickers, mejor)
+
+    def _buscar_asignaciones(self, indice_unidad, primer_picker=0):
+        estado = self._estado_busqueda_ronda
+        pickers = estado["pickers"]
+        unidades = estado["unidades"]
+        asignados = estado["asignados"]
+        cargas = estado["cargas"]
+        bits = estado["bits"]
+        mejor = estado["mejor"]
+
+        if mejor is not None and tuple(bits) < mejor[0][:len(bits)]:
+            return
+        if indice_unidad == len(unidades):
+            activos = [i for i, productos in enumerate(asignados) if productos]
+            evaluaciones = {
+                i: self._opciones_de_viaje(
+                    pickers[i], asignados[i], cargas[i], estado["wave"]
+                )
+                for i in activos
+            }
+            opciones = {i: evaluaciones[i][0] for i in activos}
+            if any(not opciones[i] for i in activos):
+                return
+            zonas = self._elegir_zonas(activos, opciones, cargas)
+            if zonas is None:
+                return
+            vector = tuple(bits)
+            if (
+                mejor is None
+                or vector > mejor[0]
+                or (vector == mejor[0] and zonas[0] < mejor[1])
+            ):
+                planes = {i: evaluaciones[i][1] for i in activos}
+                estado["mejor"] = (
+                    vector,
+                    zonas[0],
+                    [list(productos) for productos in asignados],
+                    list(cargas),
+                    zonas[1],
+                    planes,
+                )
+            return
+
+        producto_id = unidades[indice_unidad]
+        peso = self.productos[producto_id].peso_kg
+        mismo_producto_despues = (
+            indice_unidad + 1 < len(unidades)
+            and unidades[indice_unidad + 1] == producto_id
+        )
+        if self.accesos.get(producto_id) is not None:
+            for i in range(primer_picker, len(pickers)):
+                if cargas[i] + peso > _capacidad(pickers[i]) + EPSILON:
+                    continue
+                cargas[i] += peso
+                asignados[i].append(producto_id)
+                bits.append(1)
+                self._buscar_asignaciones(
+                    indice_unidad + 1, i if mismo_producto_despues else 0
+                )
+                bits.pop()
+                asignados[i].pop()
+                cargas[i] -= peso
+
+        codigo_omitir = len(pickers)
+        if codigo_omitir >= primer_picker:
+            bits.append(0)
+            self._buscar_asignaciones(
+                indice_unidad + 1,
+                codigo_omitir if mismo_producto_despues else 0,
+            )
+            bits.pop()
+
+    def _crear_trabajos(self, wave, pickers, mejor):
         _, _, productos_por_picker, pesos, zonas, planes = mejor
         trabajos = []
         for i, productos in enumerate(productos_por_picker):
@@ -256,6 +362,88 @@ class Asignador:
             self.zona_de_trabajo[trabajo["id"]] = zona_id
             trabajos.append(trabajo)
         return trabajos
+
+    def _resolver_ronda_voraz(self, wave, pickers, unidades):
+        """Asigna en orden de wave, minimizando distancia entre opciones factibles.
+
+        El desempate por zonas e identificador hace determinista el resultado.
+        """
+        asignados = [[] for _ in pickers]
+        cargas = [0.0 for _ in pickers]
+        bits = []
+        productos_sin_lugar = set()
+
+        for producto_id in unidades:
+            if producto_id in productos_sin_lugar:
+                bits.append(0)
+                continue
+            peso = self.productos[producto_id].peso_kg
+            mejor_paso = None
+
+            for i, picker in enumerate(pickers):
+                if cargas[i] + peso > _capacidad(picker) + EPSILON:
+                    continue
+
+                asignados[i].append(producto_id)
+                cargas[i] += peso
+                activos = [j for j, productos in enumerate(asignados) if productos]
+                evaluaciones = {
+                    j: self._opciones_de_viaje(
+                        pickers[j], asignados[j], cargas[j], wave,
+                    )
+                    for j in activos
+                }
+                opciones = {j: evaluaciones[j][0] for j in activos}
+                zonas = None
+                if all(opciones[j] for j in activos):
+                    zonas = self._elegir_zonas(activos, opciones, cargas)
+
+                if zonas is not None:
+                    clave = (
+                        zonas[0],
+                        tuple((self._ids[j], zonas[1][j][1]) for j in activos),
+                        self._ids[i],
+                    )
+                    if mejor_paso is None or clave < mejor_paso[0]:
+                        mejor_paso = (
+                            clave,
+                            i,
+                        )
+
+                cargas[i] -= peso
+                asignados[i].pop()
+
+            if mejor_paso is None:
+                productos_sin_lugar.add(producto_id)
+                bits.append(0)
+                continue
+
+            bits.append(1)
+            _, i = mejor_paso
+            asignados[i].append(producto_id)
+            cargas[i] += peso
+
+        activos = [i for i, productos in enumerate(asignados) if productos]
+        evaluaciones = {
+            i: self._opciones_de_viaje(
+                pickers[i], asignados[i], cargas[i], wave
+            )
+            for i in activos
+        }
+        opciones = {i: evaluaciones[i][0] for i in activos}
+        zonas = self._elegir_zonas(activos, opciones, cargas) if activos else None
+        if zonas is None:
+            return []
+        planes = {i: evaluaciones[i][1] for i in activos}
+        mejor = (
+            tuple(bits),
+            zonas[0],
+            [list(productos) for productos in asignados],
+            list(cargas),
+            zonas[1],
+            planes,
+        )
+        return self._crear_trabajos(wave, pickers, mejor)
 
     def asignar(self, libres):
         """Asigna dinámicamente un viaje a cada picker libre, como máximo."""

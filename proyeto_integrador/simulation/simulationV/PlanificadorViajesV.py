@@ -40,18 +40,24 @@ class PlanificadorViajesV:
         self.algoritmo_camino = algoritmo_camino
         self.estrategia = estrategia
         self._buscador = ALGORITMOS_CAMINO[algoritmo_camino]
+        self._cache_grafos = {}
         self._cache_recorrido = {}
+        self.busquedas = 0
+        self.nodos_expandidos = 0
 
     def _buscar_con_cache(self, grafo, origen, destino):
         origen, destino = tuple(origen), tuple(destino)
-        clave = (origen, destino)
+        clave = (id(grafo), origen, destino)
         if clave not in self._cache_recorrido:
             if origen not in grafo or destino not in grafo:
                 self._cache_recorrido[clave] = (float("inf"), [], 0)
             else:
-                self._cache_recorrido[clave] = self._buscador(
+                resultado = self._buscador(
                     grafo, origen, destino
                 )
+                self._cache_recorrido[clave] = resultado
+                self.busquedas += 1
+                self.nodos_expandidos += resultado[2]
         return self._cache_recorrido[clave]
 
     def evaluar_viaje(
@@ -85,13 +91,22 @@ class PlanificadorViajesV:
 
         estrategia = ESTRATEGIAS[self.estrategia]
         mejor = None
-        puntos_ruta = {tuple(picker.pos), *productos_por_acceso}
-        puntos_ruta.update(tuple(celda) for celda in celdas_zona)
-        grafo_planificacion = self.nav.grafo_reducido_con_puntos(puntos_ruta)
+        celdas_zona = frozenset(tuple(celda) for celda in celdas_zona)
+        clave_grafo = (tuple(picker.pos), celdas_zona)
+        grafo_planificacion = self._cache_grafos.get(clave_grafo)
         if grafo_planificacion is None:
-            # Mantener la planificación disponible para nodos que no hayan
-            # podido representarse en la compresión del grafo.
-            grafo_planificacion = self.nav.grafo
+            puntos_ruta = {tuple(picker.pos)}
+            puntos_ruta.update(
+                tuple(acceso) for acceso in accesos.values()
+                if acceso is not None
+            )
+            puntos_ruta.update(celdas_zona)
+            grafo_planificacion = self.nav.grafo_reducido_con_puntos(puntos_ruta)
+            if grafo_planificacion is None:
+                # Mantener la planificación disponible para nodos que no hayan
+                # podido representarse en la compresión del grafo.
+                grafo_planificacion = self.nav.grafo
+            self._cache_grafos[clave_grafo] = grafo_planificacion
 
         for destino in sorted(celdas_zona):
             try:

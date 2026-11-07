@@ -1,3 +1,5 @@
+import time
+
 from .NavegationV import Navegacion
 from .CargadorV import cargar_warehouse
 from .AsignadorPickersV import Asignador
@@ -112,6 +114,7 @@ class Simulacion:
         self.terminada = False
         self.tick_trabajo = None
         self.log = []
+        self.tiempo_asignacion_ms = 0.0
 
         self.hubo_avance = False
         self.ticks_sin_avance = 0
@@ -260,7 +263,18 @@ class Simulacion:
     def _asignar_trabajos(self):
         """Pide trabajo nuevo para cada picker libre en despacho/inicio."""
         libres = [p for p in self.pickers if p.wave is None and p.estado != "bloqueado"]
-        for trabajo in self.asignador.asignar(libres):
+        inicio = time.perf_counter()
+        try:
+            trabajos = self.asignador.asignar(libres)
+        finally:
+            duracion_ms = (time.perf_counter() - inicio) * 1000
+            self.tiempo_asignacion_ms += duracion_ms
+            if duracion_ms > 2000:
+                self._registrar(
+                    f"Asignación de pickers: llamada de {duracion_ms:.1f} ms."
+                )
+
+        for trabajo in trabajos:
             picker = self.pickers_por_id[trabajo["picker"]]
             tareas = {}
             for item in trabajo["productos"]:

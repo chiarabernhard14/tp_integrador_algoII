@@ -42,6 +42,7 @@ class App:
         self.alerta = Alerta(self.fuentes.alerta_titulo, self.fuentes.alerta_texto)
 
         self.sesion = Sesion(datos, waves=waves, generador_waves=generador_waves)
+        self._autoguardado_alerta_mostrada = False
         if partida_guardada is not None:
             self.sesion.usar_partida(datos, partida_guardada)
         self.anim = Animacion()
@@ -77,9 +78,12 @@ class App:
         self.alerta.mostrar(type(error).__name__, str(error))
 
     def _pausar_simulacion(self):
-        """Pausa juntos el avance lógico y la interpolación del tick actual."""
+        """Guarda el estado y pausa la simulación si el guardado pudo hacerse."""
+        if not self._guardar_autopartida():
+            return False
         self.sesion.pausar()
         self.anim.pausar()
+        return True
 
     def _ejecutar(self, nombre):
         if nombre == "algoritmo_a_estrella":
@@ -237,12 +241,23 @@ class App:
         if self.sesion.debe_avanzar():
             self.anim.arrancar(self.sesion.posiciones())
             self.sesion.dar_paso()
-            self._guardar_autopartida()
+            if self.sesion.sim.tick % 25 == 0:
+                self._guardar_autopartida()
             if self.sesion.sim.terminada:
                 self._avisar_fin()
 
     def _guardar_autopartida(self):
-        self.sesion.guardar_autopartida()
+        try:
+            self.sesion.guardar_autopartida()
+        except Exception as error:
+            print(f"No se pudo guardar la última partida: {error}")
+            if not self._autoguardado_alerta_mostrada:
+                self._autoguardado_alerta_mostrada = True
+                self.alerta.mostrar(
+                    "No se pudo guardar", str(error)
+                )
+            return False
+        return True
 
     def _avisar_fin(self):
         bloqueados = []
@@ -356,12 +371,10 @@ class App:
             self.alerta.actualizar(dt)
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
-                    self.sesion.pausar()
-                    try:
-                        self._guardar_autopartida()
-                    except ValueError as error:
-                        print(f"No se pudo guardar la última partida: {error}")
-                    activo = False
+                    if self._guardar_autopartida():
+                        self.sesion.pausar()
+                        self.anim.pausar()
+                        activo = False
                 else:
                     try:
                         self._evento(ev)
