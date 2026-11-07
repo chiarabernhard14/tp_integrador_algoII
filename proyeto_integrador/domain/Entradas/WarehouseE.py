@@ -1,4 +1,5 @@
 import sys
+from collections import deque
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from domain.validation import validate_positive_int
@@ -9,6 +10,7 @@ from .AisleE import Aisle
 from .PickerE import Picker
 from .ProductE import Product
 from .OrderE import Order
+from .Vertice import Vertice
 
 
 class Warehouse:
@@ -37,6 +39,7 @@ class Warehouse:
         self._pickers = {}
         self._productos = {}
         self._pedidos = {}
+        self.celdas = set()
 
         self.puertas = puertas if puertas is not None else {}
         self.zonas_despacho = zonas_despacho if zonas_despacho is not None else {}
@@ -51,8 +54,11 @@ class Warehouse:
         self._aisle_cell = set()
         self._dispatch_zone_cell = set() #No usar para la parte de visualización
         self._puntos_acc=set()
+        self._acceso_cargados = set()
+        self._pasillos_bloqueados = set()
         self._next_auto_aisle_id = 0
 
+#region
     # Dimensiones
     @property
     def ancho_x(self):
@@ -66,6 +72,7 @@ class Warehouse:
     @property
     def largo_y(self):
         return self._largo_y
+
 
     @largo_y.setter
     def largo_y(self, value):
@@ -240,6 +247,10 @@ class Warehouse:
 
         self._pasillos[aisle.id] = aisle
         self._aisle_cell.update(cells)
+        self.celdas.update(
+            Vertice(ubicacion=celda, pasillo=aisle)
+            for celda in cells
+        )
 
     # Pickers
     @property
@@ -283,7 +294,9 @@ class Warehouse:
         try:
             rack = self._racks[product.rack_id]
             rack.add_product_rack(product)
-            self._puntos_acc.update(product.acceso)
+            if product.acceso is not None:
+                self._acceso_cargados.add(product.acceso)
+
         except KeyError:
             raise ValueError("El producto no referencia un rack que exista en el warehouse.")
 
@@ -319,8 +332,9 @@ class Warehouse:
         if not isinstance(value, (dict, list)):
             raise TypeError("El grafo debe ser un diccionario o lista de adyacencia.")
         self._graph = value
-
+#endregion
     # Métodos de validación y consultas espaciales
+#region
     def validate_inside_warehouse(self, node):
         x, y = node[0], node[1]
         if not (0 <= x < self._ancho_x and 0 <= y < self._largo_y):
@@ -332,13 +346,6 @@ class Warehouse:
             raise ValueError("El elemento excede el ancho del almacén.")
         if element.ubicacion[1] + element.alto > self._largo_y:
             raise ValueError("El elemento excede el largo del almacén.")
-
-    def _zones_perimeter(self, zones):
-        
-        cells = set()
-        for zone in zones.values():
-            cells |= set(zone.perimeter_cells())
-        return cells
 
     def _cells_of(self, element):
         return set(element.cells())
@@ -398,7 +405,7 @@ class Warehouse:
                 if 0 <= top[1] < self._largo_y:
                     access.add(top)
         return access
-
+#endregion
     
     def generar_pasillos_faltantes(self):
         """Genera pasillos con la partición voraz de mayor área.
@@ -422,10 +429,8 @@ class Warehouse:
             self.add_aisle(aisle)
             self._next_auto_aisle_id += 1
 
-    
 
-
-    def _particion_voraz_mixta(self, grid, W, H, on_step=None):
+    def _particion_voraz_mixta(self, grid, W, H):
         """Elige el rectángulo de mayor área desde la primera celda libre.
 
         Modifica grid marcando las celdas usadas. Si se proporciona on_step,
@@ -465,144 +470,86 @@ class Warehouse:
                         mejor_ancho = ancho_comun
                         mejor_alto = alto
 
-                    if on_step is not None:
-                        on_step({
-                            "tipo": "candidato",
-                            "origen": (x0, y),
-                            "rectangulo": (x0, y, ancho_comun, alto),
-                            "area": area,
-                            "mejor_rectangulo": (x0, y, mejor_ancho, mejor_alto),
-                            "mejor_area": mejor_area,
-                        })
-
                     yy += 1
 
                 rectangulo = (x0, y, mejor_ancho, mejor_alto)
-                if on_step is not None:
-                    on_step({
-                        "tipo": "elegido",
-                        "origen": (x0, y),
-                        "rectangulo": rectangulo,
-                        "area": mejor_area,
-                    })
 
                 for yy in range(y, y + mejor_alto):
                     for xx in range(x0, x0 + mejor_ancho):
                         grid[yy][xx] = False
-
-                if on_step is not None:
-                    on_step({
-                        "tipo": "ocupado",
-                        "origen": (x0, y),
-                        "rectangulo": rectangulo,
-                        "area": mejor_area,
-                    })
 
                 rects.append(rectangulo)
                 x = x0 + mejor_ancho
 
         return rects
 
-    def build_reduced_graph_v2(self):
+    def build_reduced_graph_v2(self, full_graph=None):
         """Construye un grafo reducido con esquinas, accesos y proyecciones rectas."""
-        if not self.reduced_graph:
+        
+        if not self.graph:
             self.build_graph()
-
-        full_graph = self.reduced_graph
+            return self.reduced_graph
+        full_graph = self.graph
 
         directions = ((1, 0), (-1, 0), (0, 1), (0, -1))
-        aisle_by_cell = {
-            cell: aisle
-            for aisle in self._pasillos.values()
-            for cell in aisle.cells()
+        vertice_por_celda = {
+            vertice.ubicacion: vertice for vertice in self.celdas
         }
-        aisle_cells = set(aisle_by_cell)
+        aisle_cells = self._aisle_cell
 
         def has_edge(origin, destination):
             return any(neighbor == destination
                        for neighbor, _ in full_graph.get(origin, ()))
 
-        def can_traverse(a, b):
-            return has_edge(a, b)
-
-        # Product.acceso puede ser una coordenada (x, y); _puntos_acc
-        # también puede contener coordenadas mal cargadas como valores separados.
-        product_access = {
-            tuple(product.acceso)
-            for product in self._productos.values()
-            if product.acceso is not None
-        }
-        if product_access:
-            self._puntos_acc = set(product_access)
-        else:
-            product_access = {
-                tuple(cell) for cell in self._puntos_acc
-                if isinstance(cell, (tuple, list)) and len(cell) == 2
-            }
-        vertices = {cell for cell in product_access if cell in aisle_cells}
+        product_access = self._acceso_cargados
+     
+        vertices = {cell for cell in product_access}
 
         corners = set()
         for aisle in self._pasillos.values():
             x0, y0 = aisle.ubicacion
             x1, y1 = x0 + aisle.ancho - 1, y0 + aisle.alto - 1
             corners.update(((x0, y0), (x0, y1), (x1, y0), (x1, y1)))
-        #corners &= aisle_cells
         vertices.update(corners)
 
         # Si una esquina toca otro pasillo, conserva ambos lados del contacto
         # cuando el grafo permite atravesarlo en al menos uno de los sentidos.
         corner_contacts = set()
         for corner in corners:
-            for dx, dy in directions:
-                neighbor = (corner[0] + dx, corner[1] + dy)
-                if (neighbor in aisle_cells
-                        and aisle_by_cell[neighbor] is not aisle_by_cell[corner]
-                        and (has_edge(corner, neighbor)
-                             or has_edge(neighbor, corner))):
-                    corner_contacts.update((corner, neighbor))
-        vertices.update(corner_contacts)
-        """"
-        # Los accesos a despacho son las celdas vecinas transitables a la zona.
-        for zone in self._zonas_despacho.values():
-            x0, y0 = zone.ubicacion
-            x1, y1 = x0 + zone.ancho - 1, y0 + zone.alto - 1
-            boundary = (
-                [(x, y0 - 1) for x in range(x0, x1 + 1)]
-                + [(x, y1 + 1) for x in range(x0, x1 + 1)]
-                + [(x0 - 1, y) for y in range(y0, y1 + 1)]
-                + [(x1 + 1, y) for y in range(y0, y1 + 1)]
-            )
-            vertices.update(cell for cell in boundary if cell in aisle_cells)"""
-
-        # Proyecta esquinas y accesos en línea recta por cada pasillo. Al
-        # cruzar a otro pasillo conserva ambos extremos del tramo de unión.
-        pending = list(vertices)
-        processed = set()
-        while pending:
-            source = pending.pop()
-            if source in processed:
+            vertice_esquina = vertice_por_celda.get(corner)
+            if vertice_esquina is None:
                 continue
-            processed.add(source)
-            for dx, dy in directions:
-                current = source
-                current_aisle = aisle_by_cell[source]
-                while True:
-                    nxt = (current[0] + dx, current[1] + dy)
-                    nxt_aisle = aisle_by_cell.get(nxt)
-                    if nxt_aisle is None or not can_traverse(current, nxt):
-                        break
-                    if nxt_aisle is not current_aisle:
-                        for projected in (current, nxt):
-                            if projected not in vertices:
-                                vertices.add(projected)
-                                pending.append(projected)
-                        current_aisle = nxt_aisle
-                    current = nxt
-                if current != source and current not in vertices:
-                    vertices.add(current)
-                    pending.append(current)
+            pasillo = vertice_esquina.pasillo
+            pasillos_adyacentes = set(pasillo.salida) | set(pasillo.entrada)
 
-        # Proyecta accesos de producto al otro extremo cuando las aristas
+
+            for pasillo_id in pasillos_adyacentes:
+                otro_pasillo = self._pasillos.get(pasillo_id)
+                if otro_pasillo is None:
+                    continue
+
+                salidas_desde_esquina = corner in pasillo.salida.get(
+                    pasillo_id, ()
+                )
+                origenes_de_entrada = set(
+                    pasillo.entrada.get(pasillo_id, ())
+                )
+                for dx, dy in directions:
+                    neighbor = (corner[0] + dx, corner[1] + dy)
+                    vertice_vecino = vertice_por_celda.get(neighbor)
+                    if (vertice_vecino is None
+                            or vertice_vecino.pasillo is not otro_pasillo):
+                        continue
+                    if (
+                        salidas_desde_esquina and has_edge(corner, neighbor)
+                    ) or (
+                        neighbor in origenes_de_entrada
+                        and has_edge(neighbor, corner)
+                    ):
+                        corner_contacts.update((corner, neighbor))
+        vertices.update(corner_contacts)
+
+                # Proyecta accesos de producto al otro extremo cuando las aristas
         # dirigidas permiten recorrer ese tramo recto.
         for access in product_access:
             if access not in aisle_cells:
@@ -618,16 +565,18 @@ class Warehouse:
             current = access
             while True:
                 nxt = (current[0] + dx, current[1] + dy)
-                if nxt not in aisle_cells or not can_traverse(current, nxt):
+                if nxt not in aisle_cells or not has_edge(current, nxt):
                     break
                 current = nxt
             if current != access:
                 if current not in vertices:
                     vertices.add(current)
-                    pending.append(current)
+                    
 
-        # Las proyecciones opuestas de productos también pueden habilitar
-        # nuevas proyecciones entre pasillos; procesa las que aún quedaron pendientes.
+        # Proyecta esquinas y accesos en línea recta por cada pasillo. Al
+        # cruzar a otro pasillo conserva ambos extremos del tramo de unión.
+        pending = list(vertices)
+        processed = set()
         while pending:
             source = pending.pop()
             if source in processed:
@@ -635,12 +584,13 @@ class Warehouse:
             processed.add(source)
             for dx, dy in directions:
                 current = source
-                current_aisle = aisle_by_cell[source]
+                current_aisle = vertice_por_celda[source].pasillo
                 while True:
                     nxt = (current[0] + dx, current[1] + dy)
-                    nxt_aisle = aisle_by_cell.get(nxt)
-                    if nxt_aisle is None or not can_traverse(current, nxt):
+                    vertice_siguiente = vertice_por_celda.get(nxt)
+                    if vertice_siguiente is None or not has_edge(current, nxt):
                         break
+                    nxt_aisle = vertice_siguiente.pasillo
                     if nxt_aisle is not current_aisle:
                         for projected in (current, nxt):
                             if projected not in vertices:
@@ -648,56 +598,529 @@ class Warehouse:
                                 pending.append(projected)
                         current_aisle = nxt_aisle
                     current = nxt
+                if current != source and current not in vertices:
+                    vertices.add(current)
+                    pending.append(current)
+
+        # Conserva las dos celdas exteriores de cada esquina de despacho,
+        # excepto las dos del lado donde está la puerta.
+        for zone in self._zonas_despacho.values():
+            x0, y0 = zone.ubicacion
+            x1, y1 = x0 + zone.ancho - 1, y0 + zone.alto - 1
+            puerta = self._puertas[zone.puerta_id]
+            px, py = puerta.ubicacion
+
+            celdas_exteriores = {
+                (x0, y0 - 1), (x0 - 1, y0),
+                (x1, y0 - 1), (x1 + 1, y0),
+                (x0 - 1, y1), (x0, y1 + 1),
+                (x1 + 1, y1), (x1, y1 + 1),
+            }
+
+            if py == y0 - 1:  # puerta al norte
+                celdas_exteriores.difference_update(
+                    {(x0, y0 - 1), (x1, y0 - 1)}
+                )
+            elif py == y1 + 1:  # puerta al sur
+                celdas_exteriores.difference_update(
+                    {(x0, y1 + 1), (x1, y1 + 1)}
+                )
+            elif px == x0 - 1:  # puerta al oeste
+                celdas_exteriores.difference_update(
+                    {(x0 - 1, y0), (x0 - 1, y1)}
+                )
+            elif px == x1 + 1:  # puerta al este
+                celdas_exteriores.difference_update(
+                    {(x1 + 1, y0), (x1 + 1, y1)}
+                )
+
+            vertices.update(
+                cell for cell in celdas_exteriores if cell in aisle_cells
+            )
 
         reduced = {vertex: [] for vertex in vertices}
-        edge_paths = {}
         for origin in vertices:
             for dx, dy in directions:
                 current = origin
-                path = [origin]
+                distancia = 0
                 while True:
                     nxt = (current[0] + dx, current[1] + dy)
                     if not has_edge(current, nxt):
                         break
-                    path.append(nxt)
+                    distancia += 1
                     current = nxt
                     if current in vertices:
-                        reduced[origin].append((current, len(path) - 1))
-                        edge_paths[(origin, current)] = tuple(path)
+                        reduced[origin].append((current, distancia))
                         break
        
         self.reduced_graph = reduced
+        self.bloquear_pasillos_sin_salida()
+        self.validar_acceso_despacho_a_producto()
+        self.validar_acceso_productos_a_despacho()
         
 
     def build_graph(self):
         #cant_pasillos=self.generar_pasillos_faltantes()
         self.generar_pasillos_faltantes()
-        aisle_cells = self._occupied_by(self._pasillos)
+        
+        vertice_por_celda = {
+            vertice.ubicacion: vertice for vertice in self.celdas
+        }
+
+        def agregar_arista(origen, destino, pasillo_origen, pasillo_destino):
+            self._agregar_arista(origen, destino, 1)
+            if pasillo_origen is pasillo_destino:
+                return
+
+            salidas = pasillo_origen.salida.setdefault(pasillo_destino.id, [])
+            if origen not in salidas:
+                salidas.append(origen)
+
+            entradas = pasillo_destino.entrada.setdefault(pasillo_origen.id, [])
+            if origen not in entradas:
+                entradas.append(origen)
+
         for a in self._pasillos.values():
             vertices = a.cells()
 
             for v in vertices:
                 x, y = v
-                if a.sentido != "N" and (x, y - 1) in aisle_cells :  # ir al S
-                    self._agregar_arista((x, y), (x, y - 1), 1)
+                destino = (x, y - 1)
+                vertice_destino = vertice_por_celda.get(destino)
+                if (a.sentido != "N" and vertice_destino is not None
+                        and vertice_destino.pasillo.sentido != "N"):
+                    agregar_arista(v, destino, a, vertice_destino.pasillo)
 
-                if a.sentido != "S" and (x, y + 1) in aisle_cells:  # ir al N
-                    self._agregar_arista((x, y), (x, y + 1), 1)
+                destino = (x, y + 1)
+                vertice_destino = vertice_por_celda.get(destino)
+                if (a.sentido != "S" and vertice_destino is not None
+                        and vertice_destino.pasillo.sentido != "S"):
+                    agregar_arista(v, destino, a, vertice_destino.pasillo)
 
-                if a.sentido != "E" and (x - 1, y) in aisle_cells:  # ir al O
-                    self._agregar_arista((x, y), (x - 1, y), 1)
+                destino = (x - 1, y)
+                vertice_destino = vertice_por_celda.get(destino)
+                if (a.sentido != "E" and vertice_destino is not None
+                        and vertice_destino.pasillo.sentido != "E"):
+                    agregar_arista(v, destino, a, vertice_destino.pasillo)
 
-                if a.sentido != "O" and (x + 1, y) in aisle_cells:  # ir al E
-                    self._agregar_arista((x, y), (x + 1, y), 1)
+                destino = (x + 1, y)
+                vertice_destino = vertice_por_celda.get(destino)
+                if (a.sentido != "O" and vertice_destino is not None
+                        and vertice_destino.pasillo.sentido != "O"):
+                    agregar_arista(v, destino, a, vertice_destino.pasillo)
+        self.build_reduced_graph_v2(full_graph=self.graph)
         #return cant_pasillos
+
+    @staticmethod
+    def _celdas_rectangulo(vertice_a, vertice_b, vertice_c=None, vertice_d=None):
+        """Devuelve las celdas entre dos extremos de línea o cuatro esquinas."""
+        if vertice_c is None and vertice_d is None:
+            x_a, y_a = vertice_a
+            x_b, y_b = vertice_b
+            if x_a == x_b:
+                return {(x_a, y) for y in range(min(y_a, y_b), max(y_a, y_b) + 1)}
+            return {
+                (x, y_a)
+                for x in range(min(x_a, x_b), max(x_a, x_b) + 1)
+            }
+
+        vertices = (vertice_a, vertice_b, vertice_c, vertice_d)
+        x_min = min(vertice[0] for vertice in vertices)
+        x_max = max(vertice[0] for vertice in vertices)
+        y_min = min(vertice[1] for vertice in vertices)
+        y_max = max(vertice[1] for vertice in vertices)
+
+        return {
+            (x, y)
+            for x in range(x_min, x_max + 1)
+            for y in range(y_min, y_max + 1)
+        }
+
+    def bloquear_pasillos_sin_salida(self):
+        """Quita sectores atrapados, analizándolos sobre el grafo reducido."""
+        celdas_eliminadas = set()
+        pasillos_completos_bloqueados = set(self._pasillos_bloqueados)
+
+        while True:
+            propietario_por_nodo = {
+                vertice.ubicacion: vertice.pasillo
+                for vertice in self.celdas
+                if vertice.ubicacion in self.reduced_graph
+            }
+            nodos_por_pasillo = {}
+            for nodo, pasillo in propietario_por_nodo.items():
+                nodos_por_pasillo.setdefault(pasillo.id, set()).add(nodo)
+
+            nodos_atrapados = set()
+            for pasillo in self._pasillos.values():
+                if pasillo.blocked:
+                    continue
+
+                nodos = nodos_por_pasillo.get(pasillo.id, set())
+                if not nodos:
+                    continue
+
+                ids_salida = set(pasillo.salida)
+                salidas_directas = {
+                    origen
+                    for origen in nodos
+                    for destino, _peso in self.reduced_graph.get(origen, ())
+                    if propietario_por_nodo.get(destino) is not None
+                    and propietario_por_nodo[destino].id in ids_salida
+                    and origen in pasillo.salida[
+                        propietario_por_nodo[destino].id
+                    ]
+                }
+
+                predecesores = {nodo: set() for nodo in nodos}
+                for origen in nodos:
+                    for destino, _peso in self.reduced_graph.get(origen, ()):
+                        if destino in nodos:
+                            predecesores[destino].add(origen)
+
+                # Nodos desde los que se puede seguir por el pasillo hasta una
+                # conexión de salida registrada en Aisle.salida.
+                pueden_salir = set(salidas_directas)
+                pendientes = list(salidas_directas)
+                while pendientes:
+                    actual = pendientes.pop()
+                    for anterior in predecesores[actual]:
+                        if anterior not in pueden_salir:
+                            pueden_salir.add(anterior)
+                            pendientes.append(anterior)
+
+                # Las claves de entrada restringen el origen al pasillo que
+                # realmente conecta con este; sus listas dan las celdas de acceso.
+                entradas = set()
+                for id_origen, celdas_origen in pasillo.entrada.items():
+                    origenes_reducidos = {
+                        celda for celda in celdas_origen
+                        if celda in self.reduced_graph
+                        and propietario_por_nodo.get(celda) is not None
+                        and propietario_por_nodo[celda].id == id_origen
+                    }
+                    origenes_reducidos.update(
+                        nodo for nodo in nodos_por_pasillo.get(id_origen, ())
+                        if any(
+                            destino in nodos
+                            for destino, _peso in self.reduced_graph.get(nodo, ())
+                        )
+                    )
+                    entradas.update(
+                        destino
+                        for origen in origenes_reducidos
+                        for destino, _peso in self.reduced_graph.get(origen, ())
+                        if destino in nodos
+                    )
+
+                alcanzables = set(entradas)
+                pendientes = list(entradas)
+                while pendientes:
+                    actual = pendientes.pop()
+                    for vecino, _peso in self.reduced_graph.get(actual, ()):
+                        if vecino in nodos and vecino not in alcanzables:
+                            alcanzables.add(vecino)
+                            pendientes.append(vecino)
+
+                nodos_atrapados.update(alcanzables - pueden_salir)
+
+            if not nodos_atrapados:
+                break
+
+            propietario_por_celda = {
+                vertice.ubicacion: vertice.pasillo for vertice in self.celdas
+            }
+            pasillos_afectados = {
+                propietario_por_nodo[nodo]
+                for nodo in nodos_atrapados
+                if nodo in propietario_por_nodo
+            }
+            celdas_sector = set()
+            rectangulos_sector = []
+
+            for pasillo in pasillos_afectados:
+                nodos_pasillo = nodos_por_pasillo.get(pasillo.id, set())
+                nodos_sector = {
+                    nodo for nodo in nodos_atrapados
+                    if propietario_por_nodo.get(nodo) is pasillo
+                }
+                if not nodos_sector:
+                    continue
+
+                x0, y0 = pasillo.ubicacion
+                x1 = x0 + pasillo.ancho - 1
+                y1 = y0 + pasillo.alto - 1
+
+                vecinos_pasillo = {nodo: set() for nodo in nodos_pasillo}
+                for origen in nodos_pasillo:
+                    for destino, _peso in self.reduced_graph.get(origen, ()):
+                        if destino in nodos_pasillo:
+                            vecinos_pasillo[origen].add(destino)
+                            vecinos_pasillo[destino].add(origen)
+
+                no_procesados = set(nodos_sector)
+                while no_procesados:
+                    componente = {no_procesados.pop()}
+                    pendientes_componente = list(componente)
+                    while pendientes_componente:
+                        actual = pendientes_componente.pop()
+                        for vecino in vecinos_pasillo[actual] & no_procesados:
+                            no_procesados.remove(vecino)
+                            componente.add(vecino)
+                            pendientes_componente.append(vecino)
+
+                    # Incluye el vértice seguro que delimita cada extremo del
+                    # sector; el rectángulo elimina también ese perímetro.
+                    vertices_limite = set(componente)
+                    for nodo in componente:
+                        vertices_limite.update(
+                            vecinos_pasillo[nodo] - nodos_sector
+                        )
+
+                    # Cada componente atrapado se expande a un rectángulo que
+                    # cubre todo el ancho del pasillo entre sus vértices límite.
+                    x_min = min(nodo[0] for nodo in vertices_limite)
+                    x_max = max(nodo[0] for nodo in vertices_limite)
+                    y_min = min(nodo[1] for nodo in vertices_limite)
+                    y_max = max(nodo[1] for nodo in vertices_limite)
+                    if pasillo.ancho > pasillo.alto:
+                        y_min, y_max = y0, y1
+                    elif pasillo.alto > pasillo.ancho:
+                        x_min, x_max = x0, x1
+                    else:
+                        x_min, x_max = max(x_min, x0), min(x_max, x1)
+                        y_min, y_max = max(y_min, y0), min(y_max, y1)
+
+                    esquinas = {
+                        (x_min, y_min), (x_min, y_max),
+                        (x_max, y_min), (x_max, y_max),
+                    }
+                    if len(esquinas) == 4:
+                        celdas_rectangulo = self._celdas_rectangulo(*esquinas)
+                    else:
+                        extremos = tuple(esquinas)
+                        if len(extremos) == 1:
+                            celdas_rectangulo = set(extremos)
+                        else:
+                            celdas_rectangulo = self._celdas_rectangulo(*extremos)
+                    celdas_rectangulo &= set(pasillo.cells())
+                    celdas_sector.update(celdas_rectangulo)
+                    rectangulos_sector.append((x_min, y_min, x_max, y_max))
+
+            def arista_cruza_sector(origen, destino):
+                x_a, y_a = origen
+                x_b, y_b = destino
+                for x_min, y_min, x_max, y_max in rectangulos_sector:
+                    if x_a == x_b and x_min <= x_a <= x_max:
+                        if max(min(y_a, y_b), y_min) <= min(max(y_a, y_b), y_max):
+                            return True
+                    elif y_a == y_b and y_min <= y_a <= y_max:
+                        if max(min(x_a, x_b), x_min) <= min(max(x_a, x_b), x_max):
+                            return True
+                return False
+
+            # Limpia las aristas de entrada hacia los sectores removidos usando
+            # la relación de origen guardada por cada pasillo destino.
+            for pasillo_destino in self._pasillos.values():
+                celdas_destino = celdas_sector & set(pasillo_destino.cells())
+                if not celdas_destino:
+                    continue
+                for celdas_origen in pasillo_destino.entrada.values():
+                    for origen in celdas_origen:
+                        if origen in self.graph:
+                            self.graph[origen] = [
+                                (destino, peso)
+                                for destino, peso in self.graph[origen]
+                                if destino not in celdas_destino
+                            ]
+
+            self.graph = {
+                nodo: [(destino, peso) for destino, peso in aristas
+                       if destino not in celdas_sector]
+                for nodo, aristas in self.graph.items()
+                if nodo not in celdas_sector
+            }
+
+            # Modifica el grafo reducido existente: no vuelve a construirlo.
+            for nodo in tuple(self.reduced_graph):
+                if nodo in celdas_sector:
+                    del self.reduced_graph[nodo]
+                    continue
+                self.reduced_graph[nodo][:] = [
+                    (destino, peso)
+                    for destino, peso in self.reduced_graph[nodo]
+                    if destino in self.reduced_graph
+                    and destino not in celdas_sector
+                    and not arista_cruza_sector(nodo, destino)
+                ]
+
+            self.celdas.difference_update({
+                vertice for vertice in self.celdas
+                if vertice.ubicacion in celdas_sector
+            })
+            self._aisle_cell.difference_update(celdas_sector)
+            celdas_eliminadas.update(celdas_sector)
+
+            # Actualiza entrada/salida desde sus índices existentes, sin
+            # reconstruirlos recorriendo todas las celdas del grafo completo.
+            celdas_activas_por_pasillo = {}
+            for vertice in self.celdas:
+                celdas_activas_por_pasillo.setdefault(
+                    vertice.pasillo.id, set()
+                ).add(vertice.ubicacion)
+            for pasillo_origen in self._pasillos.values():
+                for id_destino, origenes in tuple(pasillo_origen.salida.items()):
+                    pasillo_destino = self._pasillos.get(id_destino)
+                    if pasillo_destino is None:
+                        pasillo_origen.salida.pop(id_destino, None)
+                        continue
+                    destinos_activos = celdas_activas_por_pasillo.get(
+                        id_destino, set()
+                    )
+                    origenes_vivos = [
+                        origen for origen in origenes
+                        if origen not in celdas_sector
+                        and any(
+                            destino in destinos_activos
+                            for destino, _peso in self.graph.get(origen, ())
+                        )
+                    ]
+                    if origenes_vivos:
+                        pasillo_origen.salida[id_destino] = origenes_vivos
+                        pasillo_destino.entrada[pasillo_origen.id] = list(
+                            origenes_vivos
+                        )
+                    else:
+                        pasillo_origen.salida.pop(id_destino, None)
+                        pasillo_destino.entrada.pop(pasillo_origen.id, None)
+
+            for pasillo in self._pasillos.values():
+                if (not set(pasillo.cells()) - celdas_eliminadas
+                        and not pasillo.blocked):
+                    pasillo.blocked = True
+                    pasillos_completos_bloqueados.add(pasillo.id)
+
+        self._pasillos_bloqueados = pasillos_completos_bloqueados
+        return sorted(celdas_eliminadas)
+
+    def validar_acceso_productos_a_despacho(self):
+        """Valida que cada producto tenga un camino dirigido hacia despacho.
+
+        La búsqueda empieza en la celda de acceso al rack y termina en
+        cualquier celda del grafo adyacente a una zona de despacho.
+        Devuelve los productos sin ruta; si hay alguno, informa sus IDs.
+        """
+        if not self._productos:
+            return []
+
+        if not self._zonas_despacho:
+            raise ValueError(
+                "No se puede validar el acceso de los productos: "
+                "el warehouse no tiene zonas de despacho."
+            )
+
+        nodos_despacho = set()
+        for zona in self._zonas_despacho.values():
+            nodos_despacho.update(
+                self._adjacent_cells_of(zona) & self.reduced_graph.keys()
+            )
+
+        accesos_con_ruta = set()
+        for origen in self._acceso_cargados:
+            if origen not in self.reduced_graph:
+                continue
+
+            padres = {origen: None}
+            pendientes = deque([origen])
+            destino = None
+            while pendientes and destino is None:
+                actual = pendientes.popleft()
+                if actual in nodos_despacho:
+                    destino = actual
+                    break
+                for vecino, _peso in self.reduced_graph.get(actual, ()):
+                    if vecino not in padres:
+                        padres[vecino] = actual
+                        pendientes.append(vecino)
+
+            if destino is not None:
+                actual = destino
+                while actual is not None:
+                    if actual in self._acceso_cargados:
+                        accesos_con_ruta.add(actual)
+                    actual = padres[actual]
+
+        accesos_sin_ruta = self._acceso_cargados - accesos_con_ruta
+
+        inaccesibles = [
+            producto for producto in self._productos.values()
+            if producto.acceso in accesos_sin_ruta
+        ]
+
+        if inaccesibles:
+            detalle = ", ".join(
+                f"{p.id} ({p.nombre}, acceso={p.acceso})"
+                for p in inaccesibles
+            )
+            raise ValueError(
+                "No existe un camino dirigido desde el acceso de estos "
+                f"productos hasta ninguna zona de despacho: {detalle}."
+            )
+
+        return []
+
+    def validar_acceso_despacho_a_producto(self):
+        """Valida que despacho pueda alcanzar todos los productos.
+
+        Para cada producto, busca un camino dirigido desde las zonas de
+        despacho hasta su celda de acceso.
+        """
+        if not self._productos:
+            return []
+
+        if not self._zonas_despacho:
+            raise ValueError(
+                "No se puede validar el acceso al despacho: "
+                "el warehouse no tiene zonas de despacho."
+            )
+
+        nodos_despacho = set()
+        for zona in self._zonas_despacho.values():
+            nodos_despacho.update(
+                self._adjacent_cells_of(zona) & self.reduced_graph.keys()
+            )
+
+        visitados = set(nodos_despacho)
+        pendientes = deque(nodos_despacho)
+
+        while pendientes:
+            actual = pendientes.popleft()
+            for vecino, _peso in self.reduced_graph.get(actual, ()):
+                if vecino not in visitados:
+                    visitados.add(vecino)
+                    pendientes.append(vecino)
+
+        accesos_sin_ruta = self._acceso_cargados - visitados
+        inaccesibles = [
+            producto for producto in self._productos.values()
+            if producto.acceso in accesos_sin_ruta
+        ]
+        if inaccesibles:
+            detalle = ", ".join(
+                f"{p.id} ({p.nombre}, acceso={p.acceso})"
+                for p in inaccesibles
+            )
+            raise ValueError(
+                "No existe un camino dirigido desde ninguna zona de "
+                f"despacho hasta el acceso de estos productos: {detalle}."
+            )
+
+        return []
     
     def _agregar_arista(self, origen, destino, distancia=1):
         self.graph.setdefault(origen, [])
         self.graph.setdefault(destino, [])
-        self.reduced_graph.setdefault(origen, [])
-        self.reduced_graph.setdefault(destino, [])
         
         self.graph[origen].insert(0, (destino, distancia))
-        self.reduced_graph[origen].insert(0, (destino, distancia))
 
   

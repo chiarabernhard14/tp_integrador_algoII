@@ -7,6 +7,9 @@ class Aisle(RectangularElement):
         super().__init__(ubicacion, ancho, alto)
         self.id = id
         self.sentido = sentido
+        self.salida = {}
+        self.entrada = {}
+        self.blocked = False
 
     @property
     def id(self):
