@@ -155,6 +155,14 @@ class PantallaGenerador:
         return accion
 
     def _procesar(self, ev):
+    # Con el cuadro de producto abierto, el clic izquierdo va directo al cuadro
+    # (excepto el botón Cancelar de arriba, que cierra todo el generador).
+        if (self.pestana == "manual" and self.editor.cuadro is not None
+                and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                and not BTN_CANCELAR.collidepoint(ev.pos)):
+            self.editor.evento(ev)
+            return None
+
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             accion = self._clic(ev.pos)
             if accion == "nada":
@@ -175,7 +183,7 @@ class PantallaGenerador:
             if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and self._puede_generar():
                 return "generar"
         return None
-
+    
     def _traducir(self, accion_editor):
         return {"validar": "validar", "terminar": "usar", "salir": "cerrar"}.get(accion_editor)
 
@@ -267,6 +275,7 @@ class PantallaGenerador:
         else:
             self.editor.dibujar()
             self._dibujar_panel_manual()
+            self.editor.dibujar_cuadro()
 
     def _dibujar_cabecera(self):
         for rect, texto, clave in ((TAB_AUTO, "Automático", "auto"),
