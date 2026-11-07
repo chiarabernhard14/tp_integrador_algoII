@@ -59,9 +59,26 @@ class CuadroProducto:
         self.celda = celda
         self.valores = [str(z_inicial), "20", "1.0"]
         self.activo = 0
+        self.rect = pygame.Rect(0, 0, 330, 226)
+        # Centrado sobre el área del mapa, no sobre toda la pantalla.
+        self.rect.center = (cfg.AREA_X + cfg.AREA_W // 2,
+                            cfg.AREA_Y + cfg.AREA_H // 2)
+        r = self.rect
+        self.cajas = [pygame.Rect(r.x + 150, r.y + 46 + i * 34, 160, 28) for i in range(3)]
+        self.boton_ok = pygame.Rect(r.x + 16, r.y + 172, 140, 36)
+        self.boton_cancelar = pygame.Rect(r.x + 174, r.y + 172, 140, 36)
 
     def evento(self, ev):
         """Devuelve "ok", "cancelar" o None."""
+        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if self.boton_ok.collidepoint(ev.pos):
+                return "ok"
+            if self.boton_cancelar.collidepoint(ev.pos):
+                return "cancelar"
+            for i, caja in enumerate(self.cajas):
+                if caja.collidepoint(ev.pos):
+                    self.activo = i
+            return None
         if ev.type != pygame.KEYDOWN:
             return None
         if ev.key == pygame.K_ESCAPE:
@@ -81,22 +98,23 @@ class CuadroProducto:
         return int(self.valores[0]), int(self.valores[1]), float(self.valores[2])
 
     def dibujar(self, pantalla):
-        rect = pygame.Rect(0, 0, 330, 196)
-        rect.center = pantalla.get_rect().center
+        rect = self.rect
         pygame.draw.rect(pantalla, (30, 34, 44), rect, border_radius=12)
         pygame.draw.rect(pantalla, cfg.ACENTO, rect, 2, border_radius=12)
         titulo = f"Producto en celda ({self.celda[0]}, {self.celda[1]})"
         pantalla.blit(self.fuente.render(titulo, True, (255, 255, 255)), (rect.x + 16, rect.y + 12))
-        for i in range(3):
-            y = rect.y + 46 + i * 34
+        for i, caja in enumerate(self.cajas):
             color = cfg.ACENTO if i == self.activo else (110, 120, 140)
-            pantalla.blit(self.fuente.render(self.ETIQUETAS[i], True, cfg.TEXTO), (rect.x + 16, y + 4))
-            caja = pygame.Rect(rect.x + 150, y, 160, 28)
+            pantalla.blit(self.fuente.render(self.ETIQUETAS[i], True, cfg.TEXTO), (rect.x + 16, caja.y + 4))
             pygame.draw.rect(pantalla, color, caja, 2, border_radius=6)
             pantalla.blit(self.fuente.render(self.valores[i], True, (255, 255, 255)),
                           (caja.x + 8, caja.y + 4))
-        pie = "Tab: campo   Enter: aceptar   Esc: cancelar"
-        pantalla.blit(self.fuente.render(pie, True, cfg.APAGADO), (rect.x + 16, rect.y + 160))
+        for boton, texto, relleno in ((self.boton_ok, "Aceptar", (22, 163, 74)),
+                                      (self.boton_cancelar, "Cancelar", (75, 82, 99))):
+            pygame.draw.rect(pantalla, relleno, boton, border_radius=10)
+            pygame.draw.rect(pantalla, (160, 170, 190), boton, 2, border_radius=10)
+            img = self.fuente.render(texto, True, (255, 255, 255))
+            pantalla.blit(img, img.get_rect(center=boton.center))
 
 
 class EditorEscenario:
@@ -273,6 +291,8 @@ class EditorEscenario:
 
     def dibujar(self):
         self._dibujar_mapa()
+
+    def dibujar_cuadro(self):
         if self.cuadro is not None:
             self.cuadro.dibujar(self.pantalla)
 
