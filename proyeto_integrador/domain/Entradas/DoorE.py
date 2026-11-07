@@ -21,7 +21,7 @@ class Door:
             raise ValueError("El id de la puerta debe comenzar con PUERTA_OUT.")
         if self.tipo == "INBOUND" and norm[0:9] != "PUERTA_IN":
             raise ValueError("El id de la puerta debe comenzar con PUERTA_IN.")
-        if self.tipo == "AMBOS" and norm[0:10] != "PUERTA_MIX":
+        if self.tipo == "AMBOS" and norm[0:7] != "PUERTA_":
             raise ValueError("El id de la puerta debe comenzar con PUERTA_OUT o PUERTA_IN.")
         self._id = norm
 

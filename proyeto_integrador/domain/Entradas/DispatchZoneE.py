@@ -17,8 +17,8 @@ class DispatchZone(RectangularElement):
         if not isinstance(value, str):
             raise TypeError("El id debe ser una cadena de texto.")
         norm = value.upper()
-        if norm[0:5] != "ZONA_":
-            raise ValueError("El id de la zona de despacho debe empezar con 'ZONA_'")
+        if norm[0:1] != "Z":
+            raise ValueError("El id de la zona de despacho debe empezar con 'Z'")
         self._id = norm
 
     @property
