@@ -8,6 +8,7 @@ from .AsignadorPickersV import Asignador
 from .EstadoPicker import EstadoPicker
 from .GestorColisionesV import GestorColisionesV
 from .PlanificadorViajesV import ALGORITMOS_CAMINO, ESTRATEGIAS
+from .ScenarioV import _ids_de_excepcion_inaccesible
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from ProductoInaccesible import ProductoInaccesible
@@ -86,15 +87,29 @@ class Simulacion:
         self.en_espera = True
 
         self.warehouse = cargar_warehouse(self.datos)
+
+        # --- Productos inaccesibles: avisar y excluir de los viajes ---
+        # build_graph sigue tirando ProductoInaccesible cuando hay productos
+        # sin camino al despacho. La capturamos acá, mostramos el mensaje y
+        # seguimos; se setea _grafo_reducido_listo ANTES de crear Navegacion
+        # para que esta no reconstruya el grafo y vuelva a lanzar.
+        self.productos_inaccesibles = set()
+        self.mensaje_inaccesibles = ""
+        try:
+            self.warehouse.build_graph()
+        except ProductoInaccesible as error:
+            self.mensaje_inaccesibles = str(error)
+            self.productos_inaccesibles = set(
+                _ids_de_excepcion_inaccesible(str(error))
+            )
+        self.warehouse._grafo_reducido_listo = True
+
+        if self.productos_inaccesibles:
+            self.datos["mensaje_inaccesibles"] = self.mensaje_inaccesibles
+
         self.nav = Navegacion(self.warehouse, algoritmo=self.algoritmo_camino)
         self.productos = self.warehouse.productos
 
-        # --- Productos inaccesibles: avisar y excluir de los viajes ---
-        # La excepción especial ProductoInaccesible se captura en
-        # validar_escenario y se guarda en datos["productos_inaccesibles"].
-        self.productos_inaccesibles = set(
-            self.datos.get("productos_inaccesibles", [])
-        )
         if self.productos_inaccesibles:
             self._registrar(
                 "ADVERTENCIA: productos inaccesibles (sin camino al despacho): "
@@ -102,9 +117,6 @@ class Simulacion:
                 + ". Se excluyen de los viajes; el escenario sigue ejecutándose."
             )
             self._excluir_productos_inaccesibles()
-            # El grafo reducido ya se construyó; evitar reconstruirlo para no
-            # volver a lanzar ProductoInaccesible.
-            self.warehouse._grafo_reducido_listo = True
 
         self.pickers = []
         self.pickers_por_id = {}
@@ -327,8 +339,7 @@ class Simulacion:
                     picker.estado = "disponible"
 
         for picker in self.colisiones.orden_movimiento():
-            if picker.estado != "bloqueado":
-                self._avanzar(picker)
+            self._avanzar(picker)
 
         # Fase de resolución de deadlocks: probar con cada picker esperando
         # hasta que uno avance.
@@ -341,7 +352,12 @@ class Simulacion:
 
         if not self.terminada:
             self._detectar_bloqueo()
-            if all(p.estado in ("deambulando", "bloqueado") for p in self.pickers):
+            # Solo se da la simulación por terminada si no queda trabajo:
+            # pickers con viaje, tareas pendientes o waves sin asignar.
+            if (
+                all(p.estado in ("deambulando", "bloqueado") for p in self.pickers)
+                and not self._hay_trabajo_pendiente()
+            ):
                 self.terminada = True
                 self.tick_trabajo = self.tick
                 self._registrar("Trabajo finalizado.")
@@ -384,6 +400,12 @@ class Simulacion:
             self._deambular(picker)
             return
 
+        # Un picker bloqueado cuenta los ticks esperando como uno en
+        # "esperando": sigue participando en la detección y resolución de
+        # deadlocks, y cada tick se le vuelve a dar la oportunidad de avanzar.
+        if picker.estado == "bloqueado":
+            picker.ticks_esperando += 1
+
         if picker.estado == "esperando":
             picker.ticks_esperando += 1
 
@@ -391,9 +413,18 @@ class Simulacion:
             if picker.ruta and picker.ruta[0] not in self.colisiones.ocupadas(picker):
                 picker.estado = "disponible"
                 picker.ticks_esperando = 0
+            elif not picker.ruta:
+                # Estaba esperando sin ruta (ningún objetivo alcanzable): se
+                # reintenta el plan ahora que el bloqueo pudo haberse liberado.
+                if picker.pendientes:
+                    self._elegir_objetivo(picker)
+                    # Si ya está junto al producto, puede recogerlo.
+                    if not picker.ruta and picker.objetivo is not None:
+                        self._recoger(picker)
+                else:
+                    self._planificar_regreso(picker)
             else:
-                # Seguir esperando a que el otro picker libere el paso o a
-                # que la fase de resolución de deadlocks intente moverlo.
+                # Seguir esperando a que el otro picker libere el paso.
                 return
 
         if not picker.ruta:
@@ -421,7 +452,7 @@ class Simulacion:
         """
         pickers_en_deadlock = [
             p for p in self.pickers
-            if p.estado == "esperando"
+            if p.estado in ("esperando", "bloqueado")
             and p.ticks_esperando >= LIMITE_BLOQUEO
         ]
         if not pickers_en_deadlock:
@@ -469,6 +500,12 @@ class Simulacion:
             break
 
         if elegida is None:
+            # No hay ninguna tarea alcanzable: se descarta el objetivo
+            # obsoleto (puede quedar de una ruta previa que el resolutor de
+            # deadlocks vació porque el acceso estaba ocupado) para que no se
+            # intente recoger desde una celda incorrecta.
+            picker.objetivo = None
+            picker.destinos = set()
             picker.estado = "esperando"
             self._registrar(f"{picker.id}: no hay ruta disponible por ahora.")
             return
@@ -536,6 +573,16 @@ class Simulacion:
         picker.ruta = list(ruta)
         picker.destinos = destinos
         picker.estado = "regresando"
+
+    def _hay_trabajo_pendiente(self):
+        """Queda trabajo sin terminar: waves sin asignar, viajes en curso o
+        tareas pendientes de algún picker."""
+        if self.asignador is not None and self.asignador.hay_pendiente():
+            return True
+        for picker in self.pickers:
+            if picker.wave is not None or picker.pendientes:
+                return True
+        return False
 
     def _marcar_avance(self):
         self.hubo_avance = True

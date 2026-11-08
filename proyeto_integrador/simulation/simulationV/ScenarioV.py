@@ -319,15 +319,28 @@ def validar_escenario(datos):
     except (KeyError, TypeError) as error:
         raise ValueError(f"Escenario inválido: {type(error).__name__}: {error}") from error
 
+    # Construir el grafo (ejecuta bloquear_pasillos_sin_salida y valida
+    # accesos). build_graph sigue tirando ProductoInaccesible cuando hay
+    # productos sin camino al despacho: la capturamos acá, mostramos el
+    # mensaje y guardamos los IDs para que el escenario siga ejecutándose
+    # en vez de cortarse.
+    inaccesibles = []
+    mensaje_inaccesibles = ""
     try:
-        inaccesibles = _verificar_alcanzables(warehouse)
+        warehouse.build_graph()
     except ProductoInaccesible as error:
-        # build_reduced_graph_v2 ya construyó el grafo reducido antes de
-        # validar la alcanzabilidad. Se extraen los IDs del mensaje de la
-        # excepción especial para mostrar el cartel sin detener el escenario.
+        mensaje_inaccesibles = str(error)
         inaccesibles = _ids_de_excepcion_inaccesible(str(error))
+    else:
+        try:
+            inaccesibles = _verificar_alcanzables(warehouse)
+        except ProductoInaccesible as error:
+            mensaje_inaccesibles = str(error)
+            inaccesibles = _ids_de_excepcion_inaccesible(str(error))
 
     if inaccesibles:
         datos["productos_inaccesibles"] = sorted(inaccesibles)
+        datos["mensaje_inaccesibles"] = mensaje_inaccesibles
     else:
         datos.pop("productos_inaccesibles", None)
+        datos.pop("mensaje_inaccesibles", None)

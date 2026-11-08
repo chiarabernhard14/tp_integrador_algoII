@@ -167,6 +167,7 @@ class App:
         self.sesion.cargar_escenario(ruta)
         self._refrescar_vista()
         self._guardar_autopartida()
+        self._mostrar_inaccesibles_si_corresponde()
 
     def _guardar_escenario(self):
         self._pausar_simulacion()
@@ -223,6 +224,16 @@ class App:
         self._guardar_autopartida()
         self.alerta.mostrar("Listo", f"Escenario cargado. Se generaron {cantidad} pedidos "
                                      f"al azar con los productos del mapa.")
+        self._mostrar_inaccesibles_si_corresponde()
+
+    def _mostrar_inaccesibles_si_corresponde(self):
+        """Muestra una alerta si el escenario cargado tiene productos inaccesibles."""
+        sim = getattr(self.sesion, "sim", None)
+        if sim and sim.datos.get("productos_inaccesibles"):
+            mensaje = sim.datos.get("mensaje_inaccesibles", "")
+            if not mensaje:
+                mensaje = ", ".join(sim.datos["productos_inaccesibles"])
+            self.alerta.mostrar("Productos inaccesibles", mensaje)
 
     def _seleccionar_algoritmo_camino(self, algoritmo):
         cambio = self.sesion.seleccionar_algoritmo_camino(algoritmo)

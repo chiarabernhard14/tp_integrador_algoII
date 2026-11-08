@@ -54,7 +54,10 @@ class GestorColisionesV:
                 return
             # Esperar sin replanificar de inmediato: esto evita el deadlock
             # de dos pickers que se replanifican mutuamente sin avanzar nunca.
-            picker.estado = "esperando"
+            # Un picker ya bloqueado se mantiene bloqueado (no pierde la cuenta
+            # de ticks esperando ni su prioridad en la resolución de deadlocks).
+            if picker.estado != "bloqueado":
+                picker.estado = "esperando"
             return
 
         distancia = (

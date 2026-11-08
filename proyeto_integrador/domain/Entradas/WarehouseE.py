@@ -138,12 +138,14 @@ class Warehouse:
         cells = set(zone.cells())
         if cells & self._rack_cell:
             raise ValueError("La zona de despacho se superpone con un rack.")
+        if cells & self._puntos_acc:
+            raise ValueError("La zona de despacho se superpone con un punto de acceso a un rack.")
         if cells & self._dispatch_zone_cell:
             raise ValueError("La zona de despacho se superpone con otra.")
         if cells & self._aisle_cell:
             raise ValueError("La zona de despacho se superpone con un pasillo.")
 
-            
+
         x0, y0 = zone.ubicacion
         px, py = door.ubicacion
         lado_puerta = set()
@@ -184,6 +186,8 @@ class Warehouse:
         cells = set(rack.cells())
         if cells & self._rack_cell:
             raise ValueError("El rack se superpone con otro rack.")
+        if cells & self._puntos_acc:
+            raise ValueError("El rack se superpone con un punto de acceso a un rack.")
         if cells & self._dispatch_zone_cell:
             raise ValueError("El rack se superpone con una zona de despacho.")
         if cells & self._aisle_cell:
@@ -204,11 +208,11 @@ class Warehouse:
                 raise ValueError("El rack está pegado a la pared superior del almacén.")
 
         # Las celdas de acceso al rack (adyacentes a las caras que contienen productos)
-        # no deben estar ocupadas por ningún otro elemento
+        # no deben estar ocupadas por otro rack o zona de despacho.
+        # Los pasillos no se consideran bloqueo: son la vía de acceso al rack.
         occupied = (
             self._rack_cell
             | self._dispatch_zone_cell
-            | self._aisle_cell
         )
         blocked = self._rack_access_cells(rack) & occupied
         if blocked:
@@ -217,6 +221,7 @@ class Warehouse:
             )
 
         self._racks[rack.id] = rack
+        self._puntos_acc.update(self._rack_access_cells(rack))
         self._rack_cell.update(cells)
 
     # Pasillos
@@ -599,6 +604,8 @@ class Warehouse:
         processed = set()
         while pending:
             source = pending.pop()
+            if source not in vertice_por_celda:
+                continue
             if source in processed:
                 continue
             processed.add(source)
@@ -675,8 +682,29 @@ class Warehouse:
        
         self.reduced_graph = reduced
         self.bloquear_pasillos_sin_salida()
-        self.validar_acceso_despacho_a_producto()
-        self.validar_acceso_productos_a_despacho()
+
+      
+        inaccesibles_1 = set(self.validar_acceso_despacho_a_producto())
+        inaccesibles_2 = set(self.validar_acceso_productos_a_despacho())
+
+        inaccesibles_ids = inaccesibles_1 | inaccesibles_2
+
+        if inaccesibles_ids:
+            inaccesibles = [
+                self._productos[producto_id]
+                for producto_id in inaccesibles_ids
+                if producto_id in self._productos
+            ]
+            detalle = ", ".join(
+                f"{p.id} ({p.nombre}, acceso={p.acceso})"
+                for p in inaccesibles
+            )
+            self._eliminar_productos_inaccesibles(inaccesibles)
+            raise ProductoInaccesible(
+                "No existe un camino dirigido desde ninguna zona de "
+                f"despacho hasta el acceso de estos productos: {detalle}."
+            )
+
         
 
     def build_graph(self):
@@ -984,7 +1012,7 @@ class Warehouse:
                 propietario_por_celda.pop(celda, None)
 
             # Actualiza entrada/salida filtrando las listas ya guardadas,
-            # sin reconstruir índices desde cero recorriendo self.celdas.
+            # sin reconstruir índices desde cero
             for pasillo_origen in self._pasillos.values():
                 for id_destino in tuple(pasillo_origen.salida.keys()):
                     pasillo_destino = self._pasillos.get(id_destino)
@@ -1029,6 +1057,7 @@ class Warehouse:
                 self._adjacent_cells_of(zona) & self.reduced_graph.keys()
             )
         return nodos
+
 
     def validar_acceso_productos_a_despacho(self):
         """Valida que cada producto tenga un camino dirigido hacia despacho.
@@ -1115,23 +1144,11 @@ class Warehouse:
 
         accesos_sin_ruta = self._acceso_cargados - accesos_con_ruta
 
-        inaccesibles = [
-            producto for producto in self._productos.values()
+        return [
+            producto.id for producto in self._productos.values()
             if producto.acceso in accesos_sin_ruta
         ]
 
-        if inaccesibles:
-            detalle = ", ".join(
-                f"{p.id} ({p.nombre}, acceso={p.acceso})"
-                for p in inaccesibles
-            )
-            self._eliminar_productos_inaccesibles(inaccesibles)
-            raise ProductoInaccesible(
-                "No existe un camino dirigido desde el acceso de estos "
-                f"productos hasta ninguna zona de despacho: {detalle}."
-            )
-
-        return []
 
     def validar_acceso_despacho_a_producto(self):
         """Valida que despacho pueda alcanzar todos los productos.
@@ -1172,22 +1189,10 @@ class Warehouse:
                 break
 
         accesos_sin_ruta = accesos_restantes
-        inaccesibles = [
-            producto for producto in self._productos.values()
+        return [
+            producto.id for producto in self._productos.values()
             if producto.acceso in accesos_sin_ruta
         ]
-        if inaccesibles:
-            detalle = ", ".join(
-                f"{p.id} ({p.nombre}, acceso={p.acceso})"
-                for p in inaccesibles
-            )
-            self._eliminar_productos_inaccesibles(inaccesibles)
-            raise ProductoInaccesible(
-                "No existe un camino dirigido desde ninguna zona de "
-                f"despacho hasta el acceso de estos productos: {detalle}."
-            )
-
-        return []
     
     def _agregar_arista(self, origen, destino, distancia=1):
         self.graph.setdefault(origen, [])
