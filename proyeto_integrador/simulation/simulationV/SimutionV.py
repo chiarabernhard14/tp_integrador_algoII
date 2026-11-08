@@ -1,4 +1,6 @@
 import time
+import sys
+from pathlib import Path
 
 from .NavegationV import Navegacion
 from .CargadorV import cargar_warehouse
@@ -6,6 +8,9 @@ from .AsignadorPickersV import Asignador
 from .EstadoPicker import EstadoPicker
 from .GestorColisionesV import GestorColisionesV
 from .PlanificadorViajesV import ALGORITMOS_CAMINO, ESTRATEGIAS
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from ProductoInaccesible import ProductoInaccesible
 
 LIMITE_BLOQUEO = 20
 UMBRAL_ASIGNACION_MS = 2000
@@ -84,6 +89,23 @@ class Simulacion:
         self.nav = Navegacion(self.warehouse, algoritmo=self.algoritmo_camino)
         self.productos = self.warehouse.productos
 
+        # --- Productos inaccesibles: avisar y excluir de los viajes ---
+        # La excepción especial ProductoInaccesible se captura en
+        # validar_escenario y se guarda en datos["productos_inaccesibles"].
+        self.productos_inaccesibles = set(
+            self.datos.get("productos_inaccesibles", [])
+        )
+        if self.productos_inaccesibles:
+            self._registrar(
+                "ADVERTENCIA: productos inaccesibles (sin camino al despacho): "
+                + ", ".join(sorted(self.productos_inaccesibles))
+                + ". Se excluyen de los viajes; el escenario sigue ejecutándose."
+            )
+            self._excluir_productos_inaccesibles()
+            # El grafo reducido ya se construyó; evitar reconstruirlo para no
+            # volver a lanzar ProductoInaccesible.
+            self.warehouse._grafo_reducido_listo = True
+
         self.pickers = []
         self.pickers_por_id = {}
         for entidad in self.warehouse.pickers.values():
@@ -139,6 +161,20 @@ class Simulacion:
         )
         self.planificador = self.asignador.planificador
         self.waves = self.asignador.waves
+
+    def _excluir_productos_inaccesibles(self):
+        """Quita de los pedidos los ítems de productos inaccesibles para que no
+        entren en las waves ni en los viajes, y los retira del catálogo usado
+        por el asignador. El escenario sigue ejecutándose."""
+        if not self.productos_inaccesibles:
+            return
+        for orden in self.warehouse.pedidos.values():
+            orden.items = [
+                item for item in orden.items
+                if item.producto_id not in self.productos_inaccesibles
+            ]
+        for pid in self.productos_inaccesibles:
+            self.productos.pop(pid, None)
 
     def _asignar_trabajos(self):
         """Pide trabajo nuevo para cada picker libre."""
@@ -277,6 +313,9 @@ class Simulacion:
         self.tick += 1
         self.hubo_avance = False
 
+        # Limpiar reservas de celdas del tick anterior.
+        self.colisiones.limpiar_reservas()
+
         # El primer paso deja atrás la vista previa: los pickers con viaje
         # reservado empiezan a trabajar desde donde deambulaban.
         if self.en_espera:
@@ -342,7 +381,12 @@ class Simulacion:
             return
 
         if picker.estado == "esperando":
+            picker.ticks_esperando += 1
+            if picker.ticks_esperando < 3:
+                # Seguir esperando para dejar que el otro picker libere el paso.
+                return
             picker.estado = "disponible"
+            picker.ticks_esperando = 0
 
         if not picker.ruta:
             if picker.pendientes:
@@ -506,6 +550,7 @@ class Simulacion:
                 producto_id: producto.stock
                 for producto_id, producto in self.productos.items()
             },
+            "productos_inaccesibles": sorted(self.productos_inaccesibles),
             "log": list(self.log),
         }
 

@@ -21,6 +21,12 @@ class GestorColisionesV:
         self._replanificar = replanificar
         self._llegar_a_despacho = llegar_a_despacho
         self._marcar_avance = marcar_avance
+        # Celdas reservadas para el movimiento de este tick (celda -> id picker).
+        self.reservas = {}
+
+    def limpiar_reservas(self):
+        """Limpia las reservas al inicio de cada tick."""
+        self.reservas = {}
 
     def orden_movimiento(self):
         """Prioriza pickers con trabajo; desempata por ID para ser repetible."""
@@ -30,8 +36,10 @@ class GestorColisionesV:
         )
 
     def ocupadas(self, picker):
-        """Devuelve las celdas ocupadas por los demás pickers."""
-        return {otro.pos for otro in self.pickers if otro is not picker}
+        """Devuelve las celdas ocupadas o reservadas por los demás pickers."""
+        ocupadas = {otro.pos for otro in self.pickers if otro is not picker}
+        ocupadas.update(self.reservas.values())
+        return ocupadas
 
     def mover(self, picker):
         """Avanza una celda o resuelve el conflicto que impide avanzar."""
@@ -44,8 +52,9 @@ class GestorColisionesV:
                 # Un picker sin trabajo cede el paso y busca destino en otro tick.
                 picker.ruta = []
                 return
+            # Esperar sin replanificar de inmediato: esto evita el deadlock
+            # de dos pickers que se replanifican mutuamente sin avanzar nunca.
             picker.estado = "esperando"
-            self._replanificar(picker)
             return
 
         distancia = (
@@ -56,8 +65,10 @@ class GestorColisionesV:
             picker.ruta = []
             if picker.estado != "deambulando":
                 picker.estado = "esperando"
-                self._replanificar(picker)
             return
+
+        # Reservar la celda destino para que otro picker no la tome este tick.
+        self.reservas[siguiente] = picker.id
 
         anterior = picker.pos
         picker.anterior = anterior

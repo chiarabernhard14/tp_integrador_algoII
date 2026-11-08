@@ -1,11 +1,22 @@
 import random
+import re
+import sys
+from pathlib import Path
 
 from .NavegationV import Navegacion
 from .CargadorV import cargar_warehouse
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from ProductoInaccesible import ProductoInaccesible
+
 ANCHO_PASILLO = 2
 NIVELES = 3 #Esto se puede cambiar 
 MODOS_UBICACION = ("aleatoria", "agrupada", "cerca_despacho")
+
+
+def _ids_de_excepcion_inaccesible(mensaje):
+    """Extrae los IDs de producto (p. ej. P001) del mensaje de ProductoInaccesible."""
+    return sorted(set(re.findall(r"\b(P\d+)\b", mensaje)))
 
 
 def generar_escenario(
@@ -297,9 +308,26 @@ def _verificar_alcanzables(warehouse):
             raise ValueError(f"{picker.id} no esta sobre una celda de pasillo.")
 
 def validar_escenario(datos):
-    """Valida un escenario generado, cargado o editado: estructura (Warehouse) y alcanzabilidad."""
+    """Valida un escenario generado, cargado o editado: estructura (Warehouse) y alcanzabilidad.
+
+    Los productos inaccesibles no detienen el escenario: se registran en
+    datos["productos_inaccesibles"] para que la capa superior muestre el
+    cartel y los excluya de los viajes, pero el escenario sigue ejecutándose.
+    """
     try:
         warehouse = cargar_warehouse(datos)
     except (KeyError, TypeError) as error:
         raise ValueError(f"Escenario inválido: {type(error).__name__}: {error}") from error
-    _verificar_alcanzables(warehouse)
+
+    try:
+        inaccesibles = _verificar_alcanzables(warehouse)
+    except ProductoInaccesible as error:
+        # build_reduced_graph_v2 ya construyó el grafo reducido antes de
+        # validar la alcanzabilidad. Se extraen los IDs del mensaje de la
+        # excepción especial para mostrar el cartel sin detener el escenario.
+        inaccesibles = _ids_de_excepcion_inaccesible(str(error))
+
+    if inaccesibles:
+        datos["productos_inaccesibles"] = sorted(inaccesibles)
+    else:
+        datos.pop("productos_inaccesibles", None)

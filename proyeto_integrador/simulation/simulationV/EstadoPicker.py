@@ -24,6 +24,9 @@ class EstadoPicker:
         self.indice_punto = 0
         self.pasos_trabajo = 0
 
+        # Ticks consecutivos esperando por un bloqueo (para evitar deadlocks).
+        self.ticks_esperando = 0
+
     # ---------- acceso a la entidad ----------
 
     @property
@@ -74,6 +77,7 @@ class EstadoPicker:
             "saltos": self.saltos,
             "pasos_trabajo": self.pasos_trabajo,
             "indice_punto": self.indice_punto,
+            "ticks_esperando": self.ticks_esperando,
         }
 
     def _trabajo_a_dict(self):
@@ -95,6 +99,7 @@ class EstadoPicker:
         self.saltos = g.get("saltos", 0)
         self.pasos_trabajo = g.get("pasos_trabajo", 0)
         self.indice_punto = g.get("indice_punto", self.indice_punto)
+        self.ticks_esperando = g.get("ticks_esperando", 0)
 
         self.wave = None
         self.pendientes = []
