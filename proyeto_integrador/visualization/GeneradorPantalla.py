@@ -18,7 +18,7 @@ from .Widgets import (
     ListaPickersScroll, dibujar_boton, pos_mouse,
 )
 
-NIVELES_POR_RACK = 3     # niveles de producto por celda de rack que usa el generador (ScenarioV)
+NIVELES_POR_RACK = 3     # niveles de producto por celda de rack que usa el generador (Scenario)
 
 # (clave, etiqueta, mínimo, máximo, valor inicial, columna, fila)
 PARAMETROS = (

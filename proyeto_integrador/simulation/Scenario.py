@@ -4,8 +4,8 @@ import re
 
 from domain.ProductoInaccesible import ProductoInaccesible
 
-from .NavegationV import Navegacion
-from .CargadorV import cargar_warehouse
+from .Navegation import Navegacion
+from .Cargador import cargar_warehouse
 
 ANCHO_PASILLO = 2
 NIVELES = 3 #Esto se puede cambiar 

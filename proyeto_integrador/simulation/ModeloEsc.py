@@ -3,13 +3,13 @@
 Guarda los elementos como diccionarios con el mismo formato del JSON del
 anexo A. Acá solo hay reglas de colocación y de exportación; la validación de
 estructura la hacen las clases del Warehouse y la de alcanzabilidad es
-ScenarioV.validar_escenario.
+Scenario.validar_escenario.
 """
 
 import copy
 import math
 
-from .ScenarioV import validar_escenario
+from .Scenario import validar_escenario
 
 # Valores iniciales para zonas manuales; cada zona puede personalizarse.
 PESO_MAX_ZONA_KG = 500.0

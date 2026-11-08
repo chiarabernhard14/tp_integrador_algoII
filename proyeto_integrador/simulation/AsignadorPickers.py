@@ -1,4 +1,4 @@
-from .PlanificadorViajesV import PlanificadorViajesV
+from .PlanificadorViajes import PlanificadorViajesV
 
 EPSILON = 1e-9
 

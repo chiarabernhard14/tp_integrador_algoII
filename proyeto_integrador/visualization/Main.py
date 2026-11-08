@@ -17,8 +17,8 @@ for ruta in (VISUALIZACION, RAIZ):
         sys.path.insert(0, ruta)
 
 # Los imports del proyecto van después de armar sys.path.
-from simulation.ScenarioV import generar_escenario                    # noqa: E402
-from simulation.PersistenceV import (                                 # noqa: E402
+from simulation.Scenario import generar_escenario                      # noqa: E402
+from simulation.Persistence import (                                   # noqa: E402
     cargar_escenario,
     cargar_partida,
     ruta_autoguardado,

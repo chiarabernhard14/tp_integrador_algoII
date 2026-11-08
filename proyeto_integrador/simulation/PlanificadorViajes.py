@@ -1,6 +1,6 @@
 """Estima y ordena viajes de pickers para la simulación."""
 
-from .RecorridosV import PathFinderV, RouteFinderV
+from .Recorridos import PathFinderV, RouteFinderV
 
 
 ESTRATEGIAS = {

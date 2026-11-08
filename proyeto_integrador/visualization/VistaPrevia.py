@@ -8,7 +8,7 @@ escala a cualquier tamaño de mapa.
 
 import pygame
 
-from simulation.ScenarioV import generar_vista_previa
+from simulation.Scenario import generar_vista_previa
 
 from . import CapaMapa as mapa
 from . import Config as cfg

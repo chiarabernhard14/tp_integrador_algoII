@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from .ScenarioV import validar_escenario
+from .Scenario import validar_escenario
 from .Simulation import Simulacion
 
 VERSION_PARTIDA = 1

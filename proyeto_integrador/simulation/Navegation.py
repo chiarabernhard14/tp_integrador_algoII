@@ -1,4 +1,4 @@
-from .RecorridosV import PathFinderV
+from .Recorridos import PathFinderV
 DIRECCIONES = (
     (0, 1),
     (0, -1),

@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from simulation import ScenarioV
-from simulation.AsignadorPickersV import Asignador
-from simulation.ScenarioV import validar_escenario
+from simulation import Scenario
+from simulation.AsignadorPickers import Asignador
+from simulation.Scenario import validar_escenario
 from simulation.Simulation import Simulacion
 
 TRABAJOS_REGISTRADOS = []
@@ -52,10 +52,10 @@ def leer_datos(ruta):
 
 
 def escenario_chico():
-    generador_random = ScenarioV.random.Random
-    ScenarioV.random.Random = lambda *args, **kwargs: generador_random(42)
+    generador_random = Scenario.random.Random
+    Scenario.random.Random = lambda *args, **kwargs: generador_random(42)
     try:
-        return ScenarioV.generar_escenario(
+        return Scenario.generar_escenario(
             estantes=3,
             pasillos_horizontales=2,
             productos=8,
@@ -65,7 +65,7 @@ def escenario_chico():
             modo_ubicacion="cerca_despacho",
         )
     finally:
-        ScenarioV.random.Random = generador_random
+        Scenario.random.Random = generador_random
 
 
 def ejecutar(datos, etiqueta, umbral=None):
@@ -129,8 +129,8 @@ def ejecutar(datos, etiqueta, umbral=None):
 
 if __name__ == "__main__":
     for ruta_fuente in (
-        ROOT / "simulation/PlanificadorViajesV.py",
-        ROOT / "simulation/AsignadorPickersV.py",
+        ROOT / "simulation/PlanificadorViajes.py",
+        ROOT / "simulation/AsignadorPickers.py",
         ROOT / "simulation/Simulation.py",
         ROOT / "visualization/App.py",
     ):

@@ -2,14 +2,14 @@ import time
 
 from domain.ProductoInaccesible import ProductoInaccesible
 
-from .NavegationV import Navegacion
-from .CargadorV import cargar_warehouse
-from .AsignadorPickersV import Asignador
+from .Navegation import Navegacion
+from .Cargador import cargar_warehouse
+from .AsignadorPickers import Asignador
 from .EstadoPicker import EstadoPicker
-from .GestorColisionesV import GestorColisionesV
+from .GestorColisiones import GestorColisionesV
 from .GeneradorWaves import generar_waves
-from .PlanificadorViajesV import ALGORITMOS_CAMINO, ESTRATEGIAS
-from .ScenarioV import _ids_de_excepcion_inaccesible
+from .PlanificadorViajes import ALGORITMOS_CAMINO, ESTRATEGIAS
+from .Scenario import _ids_de_excepcion_inaccesible
 
 LIMITE_BLOQUEO = 3
 UMBRAL_ASIGNACION_MS = 2000
