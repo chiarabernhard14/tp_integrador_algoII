@@ -1,14 +1,14 @@
 """Construye el modelo de dominio usado por la simulación desde un escenario."""
 
-from domain.AisleE import Aisle
-from domain.DispatchZoneE import DispatchZone
-from domain.DoorE import Door
-from domain.OrderE import Order
-from domain.OrderItemE import OrderItem
-from domain.PickerE import Picker
-from domain.ProductE import Product
-from domain.RackE import Rack
-from domain.WarehouseE import Warehouse
+from domain.Aisle import Aisle
+from domain.DispatchZone import DispatchZone
+from domain.Door import Door
+from domain.Order import Order
+from domain.OrderItem import OrderItem
+from domain.Picker import Picker
+from domain.Product import Product
+from domain.Rack import Rack
+from domain.Warehouse import Warehouse
 
 
 def _nivel_producto(datos_producto):
