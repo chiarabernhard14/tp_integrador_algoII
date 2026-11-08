@@ -43,3 +43,5 @@ def validate_segment(start_node, end_node):
     if start == end:
         raise ValueError("El segmento debe tener largo mayor que cero.")
     return start, end
+
+#comentario 
