@@ -1,0 +1,381 @@
+{
+  "warehouse": {
+    "dimensiones": {
+      "ancho_x": 14,
+      "largo_y": 13
+    },
+    "puertas": [
+      {
+        "id": "PUERTA_OUT_1",
+        "tipo": "OUTBOUND",
+        "ubicacion": {
+          "x": 3,
+          "y": 0
+        }
+      }
+    ],
+    "zonas_despacho": [
+      {
+        "id": "ZONA_OUT",
+        "puerta_id": "PUERTA_OUT_1",
+        "ubicacion": {
+          "x": 1,
+          "y": 1
+        },
+        "ancho": 5,
+        "alto": 2,
+        "peso_max_kg": 500.0
+      }
+    ],
+    "racks": [
+      {
+        "id": "R1",
+        "ubicacion": {
+          "x": 2,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R2",
+        "ubicacion": {
+          "x": 6,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      },
+      {
+        "id": "R3",
+        "ubicacion": {
+          "x": 10,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6
+      }
+    ],
+    "pasillos": [
+      {
+        "id": "PAS_H0",
+        "ubicacion": {
+          "x": 0,
+          "y": 3
+        },
+        "ancho": 14,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_H1",
+        "ubicacion": {
+          "x": 0,
+          "y": 11
+        },
+        "ancho": 14,
+        "alto": 2,
+        "sentido": "AMBOS"
+      },
+      {
+        "id": "PAS_V0_0",
+        "ubicacion": {
+          "x": 0,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V0_1",
+        "ubicacion": {
+          "x": 4,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      },
+      {
+        "id": "PAS_V0_2",
+        "ubicacion": {
+          "x": 8,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "N"
+      },
+      {
+        "id": "PAS_V0_3",
+        "ubicacion": {
+          "x": 12,
+          "y": 5
+        },
+        "ancho": 2,
+        "alto": 6,
+        "sentido": "S"
+      }
+    ]
+  },
+  "pickers": [
+    {
+      "id": "PK_01",
+      "posicion_inicial": {
+        "x": 13,
+        "y": 0
+      },
+      "capacidad_carga_kg": 100.0
+    },
+    {
+      "id": "PK_02",
+      "posicion_inicial": {
+        "x": 7,
+        "y": 11
+      },
+      "capacidad_carga_kg": 150.0
+    }
+  ],
+  "productos": [
+    {
+      "id": "P001",
+      "nombre": "Producto 001",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 7,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 3.5
+    },
+    {
+      "id": "P002",
+      "nombre": "Producto 002",
+      "rack_id": "R1",
+      "ubicacion": {
+        "x": 3,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 42,
+      "peso_kg": 5.6
+    },
+    {
+      "id": "P003",
+      "nombre": "Producto 003",
+      "rack_id": "R1",
+      "ubicacion": {
+        "x": 2,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 42,
+      "peso_kg": 2.4
+    },
+    {
+      "id": "P004",
+      "nombre": "Producto 004",
+      "rack_id": "R3",
+      "ubicacion": {
+        "x": 10,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 7.1
+    },
+    {
+      "id": "P005",
+      "nombre": "Producto 005",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 6,
+        "y": 7,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 2.4
+    },
+    {
+      "id": "P006",
+      "nombre": "Producto 006",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 7,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 7,
+      "peso_kg": 8.6
+    },
+    {
+      "id": "P007",
+      "nombre": "Producto 007",
+      "rack_id": "R3",
+      "ubicacion": {
+        "x": 10,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 9,
+      "peso_kg": 5.2
+    },
+    {
+      "id": "P008",
+      "nombre": "Producto 008",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 6,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 22,
+      "peso_kg": 6.8
+    },
+    {
+      "id": "P009",
+      "nombre": "Producto 009",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 7,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 18,
+      "peso_kg": 5.5
+    },
+    {
+      "id": "P010",
+      "nombre": "Producto 010",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 7,
+        "y": 9,
+        "z": 2
+      },
+      "cantidad_disponible": 41,
+      "peso_kg": 5.8
+    },
+    {
+      "id": "P011",
+      "nombre": "Producto 011",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 6,
+        "y": 6,
+        "z": 1
+      },
+      "cantidad_disponible": 20,
+      "peso_kg": 7.9
+    },
+    {
+      "id": "P012",
+      "nombre": "Producto 012",
+      "rack_id": "R3",
+      "ubicacion": {
+        "x": 10,
+        "y": 8,
+        "z": 2
+      },
+      "cantidad_disponible": 31,
+      "peso_kg": 2.1
+    },
+    {
+      "id": "P013",
+      "nombre": "Producto 013",
+      "rack_id": "R3",
+      "ubicacion": {
+        "x": 11,
+        "y": 10,
+        "z": 1
+      },
+      "cantidad_disponible": 11,
+      "peso_kg": 6.7
+    },
+    {
+      "id": "P014",
+      "nombre": "Producto 014",
+      "rack_id": "R2",
+      "ubicacion": {
+        "x": 6,
+        "y": 9,
+        "z": 1
+      },
+      "cantidad_disponible": 27,
+      "peso_kg": 4.4
+    },
+    {
+      "id": "P015",
+      "nombre": "Producto 015",
+      "rack_id": "R3",
+      "ubicacion": {
+        "x": 11,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 34,
+      "peso_kg": 8.7
+    },
+    {
+      "id": "P016",
+      "nombre": "Producto 016",
+      "rack_id": "R1",
+      "ubicacion": {
+        "x": 3,
+        "y": 8,
+        "z": 1
+      },
+      "cantidad_disponible": 8,
+      "peso_kg": 6.8
+    }
+  ],
+  "pedidos": [
+    {
+      "id": "PED_01",
+      "prioridad": 2,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P004",
+          "cantidad": 3
+        },
+        {
+          "producto_id": "P001",
+          "cantidad": 2
+        },
+        {
+          "producto_id": "P007",
+          "cantidad": 1
+        }
+      ]
+    },
+    {
+      "id": "PED_02",
+      "prioridad": 4,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P007",
+          "cantidad": 3
+        }
+      ]
+    },
+    {
+      "id": "PED_03",
+      "prioridad": 3,
+      "estado": "PENDIENTE",
+      "items": [
+        {
+          "producto_id": "P014",
+          "cantidad": 1
+        }
+      ]
+    }
+  ],
+  "configuracion": {
+    "wave_max_pedidos": 3,
+    "wave_max_productos": 15
+  }
+}
