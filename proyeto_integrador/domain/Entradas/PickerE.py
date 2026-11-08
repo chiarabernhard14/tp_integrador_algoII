@@ -5,7 +5,7 @@ class Picker:
         self.id = id
         self.posicion = posicion
         self.capacidad_carga_kg = capacidad_carga_kg
-        self.current_route = current_route
+        self.current_route = [] if current_route is None else current_route
 
     def move_x(self, value):
         if abs(value) != 1:

@@ -303,6 +303,29 @@ class Warehouse:
 
         self._productos[product.id] = product
 
+    def _eliminar_productos_inaccesibles(self, productos):
+        """Quita productos inválidos del rack, del almacén y de sus pedidos."""
+        ids = {producto.id for producto in productos}
+        for producto in productos:
+            if producto.rack is not None:
+                producto.rack.remove_product(producto)
+            self._productos.pop(producto.id, None)
+
+        for pedido_id, pedido in list(self._pedidos.items()):
+            pedido.items = [
+                item for item in pedido.items
+                if item.producto_id not in ids
+                and getattr(item.producto, "id", None) not in ids
+            ]
+            if not pedido.items:
+                del self._pedidos[pedido_id]
+
+        self._acceso_cargados = {
+            producto.acceso
+            for producto in self._productos.values()
+            if producto.acceso is not None
+        }
+
 
     # Pedidos
     @property
@@ -1102,6 +1125,7 @@ class Warehouse:
                 f"{p.id} ({p.nombre}, acceso={p.acceso})"
                 for p in inaccesibles
             )
+            self._eliminar_productos_inaccesibles(inaccesibles)
             raise ProductoInaccesible(
                 "No existe un camino dirigido desde el acceso de estos "
                 f"productos hasta ninguna zona de despacho: {detalle}."
@@ -1157,6 +1181,7 @@ class Warehouse:
                 f"{p.id} ({p.nombre}, acceso={p.acceso})"
                 for p in inaccesibles
             )
+            self._eliminar_productos_inaccesibles(inaccesibles)
             raise ProductoInaccesible(
                 "No existe un camino dirigido desde ninguna zona de "
                 f"despacho hasta el acceso de estos productos: {detalle}."

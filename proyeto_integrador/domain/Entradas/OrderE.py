@@ -2,11 +2,11 @@ from .OrderItemE import OrderItem
 
 class Order:
 
-    def __init__(self, id, prioridad=1, estado="PENDIENTE", items=[]):
+    def __init__(self, id, prioridad=1, estado="PENDIENTE", items=None):
         self.id = id
         self.prioridad = prioridad
         self.estado = estado
-        self.items = items
+        self.items = [] if items is None else items
 
     def add_item(self, cantidad, producto_id, producto=None):
         item = OrderItem(cantidad=cantidad, producto_id=producto_id, producto=producto, order=self)

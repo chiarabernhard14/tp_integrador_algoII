@@ -67,12 +67,12 @@ class Rack(RectangularElement):
         elif self.alto == 2 and (stack_x := x - self.ubicacion[0]) >= 0:
             if self.ubicacion[1] == y:
                 try:
-                    return self.stacks[stack_x][0]
+                    return self.stacks[0][stack_x]
                 except IndexError:
                     raise ValueError("Esa posición no pertenece al rack.")
             elif self.ubicacion[1] + 1 == y:
                 try:
-                    return self.stacks[stack_x][1]
+                    return self.stacks[1][stack_x]
                 except IndexError:
                     raise ValueError("Esa posición no pertenece al rack.")
         
