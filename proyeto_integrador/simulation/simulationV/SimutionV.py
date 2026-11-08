@@ -12,7 +12,7 @@ from .PlanificadorViajesV import ALGORITMOS_CAMINO, ESTRATEGIAS
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from ProductoInaccesible import ProductoInaccesible
 
-LIMITE_BLOQUEO = 20
+LIMITE_BLOQUEO = 3
 UMBRAL_ASIGNACION_MS = 2000
 
 
@@ -330,6 +330,10 @@ class Simulacion:
             if picker.estado != "bloqueado":
                 self._avanzar(picker)
 
+        # Fase de resolución de deadlocks: probar con cada picker esperando
+        # hasta que uno avance.
+        self._resolver_deadlocks()
+
         # Congestión: pickers que pasaron este tick esperando a otro.
         for picker in self.pickers:
             if picker.estado == "esperando":
@@ -382,11 +386,15 @@ class Simulacion:
 
         if picker.estado == "esperando":
             picker.ticks_esperando += 1
-            if picker.ticks_esperando < 3:
-                # Seguir esperando para dejar que el otro picker libere el paso.
+
+            # Si la siguiente celda ya está libre, se puede avanzar.
+            if picker.ruta and picker.ruta[0] not in self.colisiones.ocupadas(picker):
+                picker.estado = "disponible"
+                picker.ticks_esperando = 0
+            else:
+                # Seguir esperando a que el otro picker libere el paso o a
+                # que la fase de resolución de deadlocks intente moverlo.
                 return
-            picker.estado = "disponible"
-            picker.ticks_esperando = 0
 
         if not picker.ruta:
             if picker.pendientes:
@@ -399,6 +407,42 @@ class Simulacion:
 
         if picker.ruta:
             self.colisiones.mover(picker)
+
+    def _resolver_deadlocks(self):
+        """Intenta romper deadlocks entre pickers esperando.
+
+        Cuando dos pickers chocan cara a cara, ambos esperan. Se prueba con
+        el que más tiempo lleva esperando: se intenta replanificar para que
+        retroceda o busque una ruta alternativa y deje pasar al otro. Si no
+        puede, se prueba con el otro picker (el que chocó con él). Si ninguno
+        puede avanzar este tick, ambos siguen esperando al siguiente.
+        Nunca se lanza excepción: los pickers siempre deben poder completar
+        su viaje llegando a la zona de despacho.
+        """
+        pickers_en_deadlock = [
+            p for p in self.pickers
+            if p.estado == "esperando"
+            and p.ticks_esperando >= LIMITE_BLOQUEO
+        ]
+        if not pickers_en_deadlock:
+            return
+
+        # Orden: primero quien más tiempo lleva esperando, desempate por ID.
+        pickers_en_deadlock.sort(key=lambda p: (-p.ticks_esperando, p.id))
+
+        for picker in pickers_en_deadlock:
+            # Buscar ruta alternativa (paso atrás, desvío, etc.)
+            self._replanificar(picker)
+            if picker.ruta:
+                picker.estado = "disponible"
+                picker.ticks_esperando = 0
+                self.hubo_avance = True
+                self._registrar(
+                    f"{picker.id}: rompió deadlock, reanudando movimiento."
+                )
+                return
+        # Ninguno pudo avanzar este tick: ambos siguen esperando al siguiente.
+        return
 
     def _elegir_objetivo(self, picker):
         """Elige la primera tarea pendiente que tenga ruta disponible."""
