@@ -25,6 +25,7 @@ class VistaMapa:
         self.sesion = sesion
         self.anim = animacion
         self.glow = pygame.Surface((cfg.ANCHO, cfg.ALTO), pygame.SRCALPHA)
+        self.rutas = pygame.Surface((cfg.ANCHO, cfg.ALTO), pygame.SRCALPHA)
         self.mostrar_intersecciones = True
         self.sprites = FabricaSprites(cfg.ESTILO_PICKER)
         self.cartones = FabricaProductos()
@@ -38,7 +39,7 @@ class VistaMapa:
     def recalcular(self):
         """Hay que llamarlo cada vez que cambia el warehouse de la sesión."""
         almacen = self.sesion.sim.warehouse
-        area = pygame.Rect(cfg.AREA_X, cfg.AREA_Y, cfg.AREA_W, cfg.AREA_H)
+        area = pygame.Rect(cfg.AREA_X, cfg.AREA_Y, cfg.AREA_SIM_W, cfg.AREA_SIM_H)
         self.grilla = Grilla(almacen.ancho_x, almacen.largo_y, area)
         self.capa.construir(self.grilla, almacen)
 
@@ -50,11 +51,12 @@ class VistaMapa:
     def _construir_fondo(self):
         fondo = pygame.Surface((cfg.ANCHO, cfg.ALTO))
         fondo.fill(cfg.BG)
-        pygame.draw.rect(fondo, cfg.SUELO, (20, 20, 840, 860), border_radius=18)
-        for x in range(44, 860, 24):
+        pygame.draw.rect(fondo, cfg.SUELO, (20, 20, cfg.MARCO_MAPA_W, 860), border_radius=18)
+        for x in range(44, 20 + cfg.MARCO_MAPA_W - 20, 24):
             for y in range(44, 880, 24):
                 pygame.draw.circle(fondo, (62, 68, 82), (x, y), 1)
-        pygame.draw.rect(fondo, cfg.BORDE_SUELO, (20, 20, 840, 860), 2, border_radius=18)
+        pygame.draw.rect(fondo, cfg.BORDE_SUTIL,
+                         (20, 20, cfg.MARCO_MAPA_W, 860), 1, border_radius=12)
         return fondo
 
     def dibujar_fondo(self):
@@ -72,38 +74,40 @@ class VistaMapa:
 
     # ---------- encabezado ----------
 
-    def _texto_estado(self):
+    def _estado_visual(self):
         sesion = self.sesion
         if sesion.sim.terminada:
             for p in sesion.estado["pickers"]:
                 if p["estado"] == "bloqueado":
-                    return "Terminada con pickers bloqueados"
-            return "Simulacion terminada"
+                    return "Terminada con pickers bloqueados", cfg.ROJO
+            return "Simulación terminada", cfg.VERDE
         if sesion.corriendo:
-            return "En curso"
+            return "En curso", cfg.ACENTO
         if sesion.estado["tick"] == 0:
-            return "Listo. Presiona Iniciar o Paso"
-        return "En pausa"
+            return "Listo. Presiona Iniciar o Paso", cfg.ACENTO
+        return "En pausa", cfg.AMARILLO
 
     def _dibujar_encabezado(self):
-        sesion = self.sesion
-        waves = sesion.estado.get("waves", [])
-        completadas = sum(
-            bool(wave.get("completada"))
-            or str(wave.get("estado", "")).upper() == "COMPLETADA"
-            for wave in waves
-        )
-        pasos = 0
-        for p in sesion.estado["pickers"]:
-            pasos += len(p["trail"]) - 1
-        self.pincel.texto("Almacen", self.fuentes.titulo, cfg.TEXTO, 44, 30)
-        resumen = (f"Tick {sesion.estado['tick']}   |   Pickers {len(sesion.estado['pickers'])}   |   "
-                   f"Waves completas {completadas}/{len(waves)}   |   Pasos {pasos}")
-        self.pincel.texto(resumen, self.fuentes.normal, cfg.APAGADO, 44, 68)
-        ancho = 300
-        self.pincel.rect_alfa(540, 36, ancho, 30, (88, 166, 255, 38), 15)
-        self.pincel.texto(self._texto_estado(), self.fuentes.chico, cfg.TEXTO,
-                          540 + ancho // 2, 44, "centro")
+        texto, color = self._estado_visual()
+        fuente = self.fuentes.normal
+        ancho = fuente.size(texto)[0] + 58
+        alto = 34
+        centro = 20 + cfg.MARCO_MAPA_W // 2
+        x = centro - ancho // 2
+        y = 36
+
+        # Sombra suave y fondo tintado con el color del estado.
+        self.pincel.rect_alfa(x, y + 4, ancho, alto, (0, 0, 0, 55), alto // 2)
+        self.pincel.rect_alfa(x, y, ancho, alto, (*color, 32), alto // 2)
+        pygame.draw.rect(self.pantalla, color, (x, y, ancho, alto),
+                         1, border_radius=alto // 2)
+
+        # Punto de estado con un halo tenue.
+        cx = x + 18
+        cy = y + alto // 2
+        self.pincel.circulo_alfa(cx, cy, 8, color, 55)
+        pygame.draw.circle(self.pantalla, color, (cx, cy), 4)
+        self.pincel.texto(texto, fuente, cfg.BLANCO_SUAVE, x + 32, y + 9)
 
     # ---------- elementos del warehouse ----------
 
@@ -155,22 +159,51 @@ class VistaMapa:
     def _dibujar_recorridos(self):
         g = self.grilla
         self.glow.fill((0, 0, 0, 0))
+        self.rutas.fill((0, 0, 0, 0))
         ancho = max(2, g.celda // 6)
         pickers = self.sesion.estado["pickers"]
+
+        # Estela recorrida: halo suave y trazo que se aclara hacia la posición actual.
         for i, p in enumerate(pickers):
             color = self._color_picker(i)
-            puntos = []
-            for celda in p["trail"]:
-                puntos.append(g.centro(celda[0], celda[1]))
+            puntos = [g.centro(celda[0], celda[1]) for celda in p["trail"]]
             if len(puntos) >= 2:
-                pygame.draw.lines(self.glow, (color[0], color[1], color[2], 110),
-                                  False, puntos, ancho)
+                self._trazo_estela(self.glow, puntos, color, ancho)
         self.pantalla.blit(self.glow, (0, 0))
+
+        # Ruta futura: guía tenue con puntos redondeados.
+        radio = max(1, int(g.celda * 0.1))
         for i, p in enumerate(pickers):
             color = self._color_picker(i)
-            for celda in p["ruta"]:
-                cx, cy = g.centro(celda[0], celda[1])
-                pygame.draw.circle(self.pantalla, color, (cx, cy), 2)
+            puntos = [g.centro(celda[0], celda[1]) for celda in p["ruta"]]
+            if not puntos:
+                continue
+            origen = g.centro(*p["posicion"])
+            pygame.draw.lines(
+                self.rutas, (color[0], color[1], color[2], 70), False,
+                [origen] + puntos, max(1, ancho // 2),
+            )
+            for punto in puntos:
+                pygame.draw.circle(
+                    self.rutas, (color[0], color[1], color[2], 150),
+                    punto, radio,
+                )
+        self.pantalla.blit(self.rutas, (0, 0))
+
+    def _trazo_estela(self, superficie, puntos, color, ancho):
+        """Dibuja una estela redondeada con un halo y un degradado de opacidad."""
+        pygame.draw.lines(superficie, (color[0], color[1], color[2], 24),
+                          False, puntos, ancho + 6)
+        total = len(puntos) - 1
+        radio = max(1, ancho // 2)
+        for i in range(total):
+            alfa = 45 + int(95 * (i / total))
+            pygame.draw.line(superficie, (color[0], color[1], color[2], alfa),
+                             puntos[i], puntos[i + 1], ancho)
+            pygame.draw.circle(superficie, (color[0], color[1], color[2], alfa),
+                               puntos[i], radio)
+        pygame.draw.circle(superficie, (color[0], color[1], color[2], 150),
+                           puntos[-1], radio)
 
     def _dibujar_objetivos(self):
         g = self.grilla

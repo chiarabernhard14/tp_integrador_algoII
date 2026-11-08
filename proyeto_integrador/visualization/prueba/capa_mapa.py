@@ -25,7 +25,6 @@ DESPACHO_ARRIBA = (38, 98, 90)
 DESPACHO_ABAJO = (30, 78, 76)
 DESPACHO_RAYA = (52, 128, 114)
 DESPACHO_BORDE = (118, 232, 196)
-DESPACHO_ETIQUETA = (156, 246, 218)
 ESQUINERO = (250, 204, 21)
 PUERTA_MARCO = (30, 36, 48)
 PUERTA_ARRIBA = (218, 225, 236)
@@ -33,7 +32,7 @@ PUERTA_ABAJO = (122, 133, 152)
 PUERTA_NERVIO = (96, 106, 126)
 PUERTA_LUZ = (110, 240, 170)
 TOPE_NEGRO = (24, 28, 36)
-BORDE_MAPA = (205, 213, 230)
+BORDE_MAPA = (58, 61, 69)
 
 
 def _degradado(ancho, alto, inicio, fin, horizontal=False):
@@ -93,12 +92,12 @@ class CapaMapa:
     # ---------- piso y pasillos ----------
 
     def _resplandor(self):
-        """Halo azul suave alrededor del warehouse."""
+        """Halo oscuro y discreto alrededor del warehouse."""
         g = self.g
         base = g.rect(0, 0, g.ancho_celdas, g.alto_celdas)
-        for i in range(7, 0, -1):
-            r = base.inflate(i * 5, i * 5)
-            self.pincel.rect_alfa(r.x, r.y, r.w, r.h, (88, 166, 255, 9), 12 + i * 2)
+        for i in range(4, 0, -1):
+            r = base.inflate(i * 4, i * 4)
+            self.pincel.rect_alfa(r.x, r.y, r.w, r.h, (18, 20, 25, 12), 10 + i * 2)
 
     def _piso(self):
         g = self.g
@@ -164,8 +163,8 @@ class CapaMapa:
                     x0 -= 1
                 elif px == x1:
                     x1 += 1
-            # La zona lógica del warehouse se mantiene intacta; solo su dibujo
-            # cubre también la celda de acceso donde está la puerta.
+            # El área verde llega hasta la celda del portón; el portón se
+            # superpone después sobre el borde exterior del warehouse.
             rect = g.rect(x0, y0, x1 - x0, y1 - y0)
             self.total.blit(_degradado(rect.w, rect.h, DESPACHO_ARRIBA, DESPACHO_ABAJO), rect.topleft)
             rayas = pygame.Surface(rect.size, pygame.SRCALPHA)
@@ -174,7 +173,6 @@ class CapaMapa:
             self.total.blit(rayas, rect.topleft)
             pygame.draw.rect(self.total, DESPACHO_BORDE, rect, 2)
             self._esquineros(rect)
-            self._etiqueta_despacho(rect)
 
     def _esquineros(self, rect):
         """Marcas amarillas en las cuatro esquinas, como las de un área señalizada."""
@@ -189,16 +187,6 @@ class CapaMapa:
             pygame.draw.line(self.total, ESQUINERO, (x, y), (x + sx * largo, y), 4)
             pygame.draw.line(self.total, ESQUINERO, (x, y), (x, y + sy * largo), 4)
 
-    def _etiqueta_despacho(self, rect):
-        if rect.width < 90:
-            return
-        fuente = self.fuentes.mini
-        texto = "DESPACHO"
-        ancho = fuente.size(texto)[0] + 20
-        self.pincel.rect_alfa(rect.x + 12, rect.y + 10, ancho, 20, (10, 20, 26, 190), 10)
-        self.pincel.circulo(rect.x + 22, rect.y + 20, 3, DESPACHO_BORDE)
-        self.pincel.texto(texto, fuente, DESPACHO_ETIQUETA, rect.x + 30, rect.y + 14)
-
     def _puertas(self):
         """Portón de muelle metido en el muro: panel de acero, topes de seguridad y luz de estado."""
         g = self.g
@@ -212,17 +200,9 @@ class CapaMapa:
             largo = int(celda.w * 0.96)
             grosor = max(10, int(celda.w * 0.46))
             r = pygame.Rect(0, 0, largo if horizontal else grosor, grosor if horizontal else largo)
-            centro_borde = self._centro_puerta(celda, puerta, zona, grosor)
-            if centro_borde is None:
-                corrimiento = int(grosor * 0.15)
-                if adentro == "N":
-                    centro_borde = (celda.centerx, celda.bottom - corrimiento)
-                elif adentro == "S":
-                    centro_borde = (celda.centerx, celda.top + corrimiento)
-                elif adentro == "E":
-                    centro_borde = (celda.left + corrimiento, celda.centery)
-                else:
-                    centro_borde = (celda.right - corrimiento, celda.centery)
+            # El símbolo cruza la línea del muro en la celda exterior, en vez
+            # de quedar centrado dentro del área de despacho.
+            centro_borde = self._centro_perimetro(celda, px, py)
             r.center = centro_borde
             self._porton(r, horizontal, adentro)
 
@@ -242,24 +222,15 @@ class CapaMapa:
             return "O"
         return None
 
-    @staticmethod
-    def _centro_puerta(celda, puerta, zona, grosor):
-        """Dibuja el portón asociado dentro del rectángulo de despacho,
-        manteniendo intacta la celda lógica de la puerta."""
-        if zona is None:
-            return None
-        zx, zy = zona.ubicacion
-        px, py = puerta.ubicacion
-        inset = grosor // 2 + 3
-        if py == zy - 1:
-            return celda.centerx, celda.top - inset
-        if py == zy + zona.alto:
-            return celda.centerx, celda.bottom + inset
-        if px == zx - 1:
-            return celda.right + inset, celda.centery
-        if px == zx + zona.ancho:
-            return celda.left - inset, celda.centery
-        return None
+    def _centro_perimetro(self, celda, px, py):
+        """Centro del portón sobre el muro exterior correspondiente."""
+        if py == 0:
+            return celda.centerx, celda.bottom
+        if py == self.g.alto_celdas - 1:
+            return celda.centerx, celda.top
+        if px == 0:
+            return celda.left, celda.centery
+        return celda.right, celda.centery
 
     def _porton(self, r, horizontal, adentro):
         self.pincel.rect_alfa(r.x + 2, r.y + 3, r.w, r.h, (0, 0, 0, 100), 5)
@@ -344,4 +315,4 @@ class CapaMapa:
     def _borde(self):
         g = self.g
         rect = g.rect(0, 0, g.ancho_celdas, g.alto_celdas)
-        pygame.draw.rect(self.total, BORDE_MAPA, rect.inflate(2, 2), 2)
+        pygame.draw.rect(self.total, BORDE_MAPA, rect.inflate(2, 2), 1, border_radius=8)

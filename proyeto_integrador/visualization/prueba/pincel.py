@@ -19,7 +19,7 @@ class Fuentes:
         self.chico = pygame.font.SysFont(nombres, 13)
         self.mini = pygame.font.SysFont(nombres, 11, bold=True)
         self.alerta_titulo = pygame.font.SysFont(nombres, 24, bold=True)
-        self.alerta_texto = pygame.font.SysFont(nombres, 19)
+        self.alerta_texto = pygame.font.SysFont(nombres, 19, bold=True)
 
 
 class Pincel:
@@ -66,6 +66,9 @@ class Pincel:
         pygame.draw.rect(sup, color, (0, 0, w, h), border_radius=radio)
         self.pantalla.blit(sup, (x, y))
 
+    # =====================================================================
+    # CÓDIGO MUERTO — REVISAR (no se usa desde ningún archivo vivo)
+    # =====================================================================
     def linea_punteada(self, x1, y1, x2, y2, color, ancho=2, largo=8, hueco=6):
         dx = x2 - x1
         dy = y2 - y1
@@ -87,3 +90,6 @@ class Pincel:
         self.linea_punteada(x + w, y, x + w, y + h, color)
         self.linea_punteada(x + w, y + h, x, y + h, color)
         self.linea_punteada(x, y + h, x, y, color)
+    # =====================================================================
+    # FIN CÓDIGO MUERTO
+    # =====================================================================

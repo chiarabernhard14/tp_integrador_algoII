@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pygame
+import time
 
 from simulation.simulationV.ModeloEsc import ModeloEscenario
 from . import config as cfg
@@ -18,9 +19,6 @@ HERRAMIENTAS = {
 }
 SENTIDOS = {pygame.K_n: "N", pygame.K_s: "S", pygame.K_e: "E",
             pygame.K_o: "O", pygame.K_a: "AMBOS"}
-
-COLOR_OK = (52, 211, 153)
-COLOR_MAL = (239, 68, 68)
 
 
 class _ElementoVista:
@@ -140,6 +138,11 @@ class EditorEscenario:
         self.cuadro = None
         self.mensaje = ""
 
+        # Validación automática con retraso
+        self._ultimo_cambio = 0.0
+        self._resultado_validacion = []  # lista de strings de error, vacía si válido
+        self._esta_vacio = True
+
     # ---------- acciones (también las usan los botones de la pestaña) ----------
 
     def seleccionar(self, herramienta):
@@ -152,6 +155,38 @@ class EditorEscenario:
 
     def deshacer(self):
         self.modelo.deshacer()
+        self._marcar_cambio()
+
+    def _marcar_cambio(self):
+        """Registra que el modelo cambió; la validación se disparará tras el delay."""
+        self._ultimo_cambio = time.perf_counter() * 1000.0
+
+    def actualizar_validacion(self, ahora_ms=None):
+        """Si pasó el delay desde el último cambio, revalida el modelo.
+
+        Devuelve True si el resultado cambió.
+        """
+        if ahora_ms is None:
+            ahora_ms = time.perf_counter() * 1000.0
+        if ahora_ms - self._ultimo_cambio < cfg.VALIDACION_DELAY_MS:
+            return False
+        self._ultimo_cambio = ahora_ms + 1e9  # evitar revalidar en cada frame
+        self._resultado_validacion = self.modelo.validar()
+        m = self.modelo
+        self._esta_vacio = not (m.racks or m.zonas or m.puertas or m.pasillos or m.pickers or m.productos)
+        return True
+
+    @property
+    def errores_validacion(self):
+        return list(self._resultado_validacion)
+
+    @property
+    def valido(self):
+        return not self._resultado_validacion and not self._esta_vacio
+
+    @property
+    def esta_vacio(self):
+        return self._esta_vacio
 
     # ---------- eventos ----------
 
@@ -186,6 +221,7 @@ class EditorEscenario:
         if self.herramienta == "borrar":
             self.modelo.borrar(celda[0], celda[1])
             self.mensaje = ""
+            self._marcar_cambio()
         elif self.herramienta == "producto":
             self._abrir_cuadro(celda)
         elif self.herramienta == "picker" and self.modelo.picker_en(celda[0], celda[1]) != -1:
@@ -216,17 +252,20 @@ class EditorEscenario:
                 return
             x, y = self.cuadro.celda
             self.mensaje = self.modelo.agregar_producto(x, y, z, stock, peso)
+            self._marcar_cambio()
             if not self.mensaje:
                 self.cuadro = None
 
     def _soltar(self):
         x, y, w, h = self._rect_arrastre()
         self.mensaje = self.modelo.agregar(self.herramienta, x, y, w, h, self.sentido)
+        self._marcar_cambio()
         self.inicio = None
 
     def _soltar_picker(self):
         x, y = self.actual
         self.mensaje = self.modelo.mover_picker(self.picker_movido, x, y)   # si no se puede, queda donde estaba
+        self._marcar_cambio()
         self.picker_movido = -1
 
     def _tecla(self, ev):
@@ -266,10 +305,10 @@ class EditorEscenario:
         zona = g.rect(0, 0, g.ancho_celdas, g.alto_celdas)
         for i in range(g.ancho_celdas + 1):
             x = g.x + i * g.celda
-            pygame.draw.line(sup, (255, 255, 255, 34), (x, zona.top), (x, zona.bottom))
+            pygame.draw.line(sup, (*cfg.MAPA_GRILLA, 28), (x, zona.top), (x, zona.bottom))
         for j in range(g.alto_celdas + 1):
             y = g.y + j * g.celda
-            pygame.draw.line(sup, (255, 255, 255, 34), (zona.left, y), (zona.right, y))
+            pygame.draw.line(sup, (*cfg.MAPA_GRILLA, 28), (zona.left, y), (zona.right, y))
         return sup
 
     def _almacen_visual(self):
@@ -299,6 +338,9 @@ class EditorEscenario:
     def _dibujar_mapa(self):
         g = self.grilla
         self._actualizar_capa()
+        # Fondo oscuro del lienzo para que resalten celdas y elementos.
+        area = g.rect(0, 0, g.ancho_celdas, g.alto_celdas)
+        pygame.draw.rect(self.pantalla, cfg.MAPA_FONDO, area)
         self.capa.dibujar(self.pantalla)
         self.pantalla.blit(self.rejilla, (0, 0))
 
@@ -314,45 +356,86 @@ class EditorEscenario:
             ok = self.modelo.error(self.herramienta, x, y, w, h) == ""
             r = g.rect(x, y, w, h)
             previa = pygame.Surface(r.size, pygame.SRCALPHA)
-            previa.fill((*(COLOR_OK if ok else COLOR_MAL), 120))
+            previa.fill((*(cfg.MAPA_PREVIA_VALIDO if ok else cfg.MAPA_PREVIA_INVALIDO)[:3],
+                         cfg.MAPA_PREVIA_VALIDO[3] if ok else cfg.MAPA_PREVIA_INVALIDO[3]))
             self.pantalla.blit(previa, r.topleft)
+        # Resaltar celda bajo el cursor (solo cuando no se está arrastrando).
+        if self.inicio is None and self.hover is not None and self.herramienta != "producto":
+            x, y = self.hover
+            if self.modelo.error(self.herramienta, x, y, 1, 1) == "":
+                r = g.rect(x, y, 1, 1)
+                sup = pygame.Surface(r.size, pygame.SRCALPHA)
+                sup.fill((*cfg.MAPA_CELDA_HOVER[:3], cfg.MAPA_CELDA_HOVER[3]))
+                self.pantalla.blit(sup, r.topleft)
         self._dibujar_texto_estado()
 
-    def _dibujar_picker(self, indice, celda, apagado=False):
+    def _dibujar_picker(self, indice, celda, apagado=False, offset=(0, 0)):
         g = self.grilla
         radio = self._radio_picker()
         color = self._color_picker(indice)
         x, y = g.centro(celda[0], celda[1])
+        x += offset[0]
+        y += offset[1]
+        # Limitar el sprite a su celda para no dibujar cortado en el borde
+        radio_efectivo = min(radio, g.celda // 2 - 2)
         fase = (pygame.time.get_ticks() // 400) % 2
-        sprite = self.sprites.obtener(color, "N", radio, False, apagado, fase)
+        sprite = self.sprites.obtener(color, "N", radio_efectivo, False, apagado, fase)
         if not apagado:
-            sombra = self.sprites.sombra(radio)
-            self.pantalla.blit(sombra, sombra.get_rect(center=(x + 1, y + int(radio * 0.55))))
-            brillo = self.sprites.resplandor(color, radio)
+            sombra = self.sprites.sombra(radio_efectivo)
+            self.pantalla.blit(sombra, sombra.get_rect(center=(x + 1, y + int(radio_efectivo * 0.55))))
+            brillo = self.sprites.resplandor(color, radio_efectivo)
             self.pantalla.blit(brillo, brillo.get_rect(center=(x, y)))
         self.pantalla.blit(sprite, sprite.get_rect(center=(x, y)))
 
     def _dibujar_pickers(self):
+        g = self.grilla
+        # Contar pickers por celda para detectar apilamientos
+        celdas_pickers = {}
         for indice, picker in enumerate(self.modelo.pickers):
             celda = (picker["ubicacion"]["x"], picker["ubicacion"]["y"])
-            if indice == self.picker_movido:
-                self._dibujar_picker(indice, celda, apagado=True)      # queda un fantasma donde estaba
+            celdas_pickers.setdefault(celda, []).append(indice)
+
+        # Calcular offset para pickers que comparten celda o son vecinos
+        offsets = {}
+        for celda, indices in celdas_pickers.items():
+            if len(indices) > 1:
+                for i, indice in enumerate(indices):
+                    angulo = i * (2 * 3.14159 / len(indices))
+                    offset = (int(8 * __import__('math').cos(angulo)),
+                              int(8 * __import__('math').sin(angulo)))
+                    offsets[indice] = offset
             else:
-                self._dibujar_picker(indice, celda)
+                offsets[indices[0]] = (0, 0)
+
+        for indice, picker in enumerate(self.modelo.pickers):
+            celda = (picker["ubicacion"]["x"], picker["ubicacion"]["y"])
+            offset = offsets.get(indice, (0, 0))
+            if indice == self.picker_movido:
+                self._dibujar_picker(indice, celda, apagado=True, offset=offset)
+            else:
+                self._dibujar_picker(indice, celda, offset=offset)
+
+        # Mostrar contador si hay pickers apilados en la misma celda
+        for celda, indices in celdas_pickers.items():
+            if len(indices) > 1:
+                x, y = g.centro(celda[0], celda[1])
+                img = self.fuentes.chico.render(f"×{len(indices)}", True, (255, 255, 255))
+                self.pantalla.blit(img, img.get_rect(center=(x + 6, y - 6)))
+
         if self.picker_movido != -1 and self.actual is not None:
             x, y = self.actual
             valido = self.modelo.error_mover_picker(self.picker_movido, x, y) == ""
-            self._dibujar_picker(self.picker_movido, (x, y))
-            self._marco_celda(x, y, COLOR_OK if valido else COLOR_MAL)
+            self._dibujar_picker(self.picker_movido, (x, y), offset=(0, 0))
+            self._marco_celda(x, y, cfg.VERDE if valido else cfg.ROJO)
         elif self.herramienta == "picker" and self.hover is not None and self.inicio is None:
             x, y = self.hover
             if self.modelo.picker_en(x, y) == -1:
                 siguiente = len(self.modelo.pickers)
                 valido = self.modelo.error("picker", x, y, 1, 1) == ""
                 if valido:
-                    self._dibujar_picker(siguiente, (x, y), apagado=True)   # así quedaría al hacer clic
+                    self._dibujar_picker(siguiente, (x, y), apagado=True)
                 else:
-                    self._marco_celda(x, y, COLOR_MAL)
+                    self._marco_celda(x, y, cfg.ROJO)
 
     def _marco_celda(self, x, y, color):
         rect = self.grilla.rect(x, y, 1, 1)

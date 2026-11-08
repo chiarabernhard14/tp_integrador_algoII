@@ -30,8 +30,22 @@ class App:
         pygame.init()
         titulo = "Wave Picking - Simulacion"
         pygame.display.set_caption(titulo)
+
+        # Ajustar el tamaño de la ventana al área disponible de la pantalla
+        info = pygame.display.Info()
+        ancho_pantalla = info.current_w
+        alto_pantalla = info.current_h
+        # Dejar margen para la barra de tareas y bordes
+        ancho_ventana = min(cfg.ANCHO, ancho_pantalla - 50)
+        alto_ventana = min(cfg.ALTO, alto_pantalla - 80)
+        # Mantener proporción si se reduce
+        escala = min(ancho_ventana / cfg.ANCHO, alto_ventana / cfg.ALTO)
+        if escala < 1.0:
+            ancho_ventana = int(cfg.ANCHO * escala)
+            alto_ventana = int(cfg.ALTO * escala)
+
         self.ventana = pygame.display.set_mode(
-            (cfg.ANCHO, cfg.ALTO), pygame.RESIZABLE
+            (ancho_ventana, alto_ventana), pygame.RESIZABLE
         )
         # Se dibuja en un lienzo de referencia y se escala a la ventana
         # maximizada; así todos los botones conservan sus posiciones relativas.
@@ -58,6 +72,7 @@ class App:
         self.vista.mouse_pos = (0, 0)
         self.panel = PanelLateral(self.pincel, self.fuentes, self.sesion, self.anim)
         self.panel_waves = PanelWaves(self.pincel, self.fuentes, self.sesion)
+        self._espera_deambular = 0.0
         self.generador = None
         if partida_guardada is not None:
             self.alerta.mostrar("Listo", "Se restauró la última partida guardada.")
@@ -253,6 +268,14 @@ class App:
                 self._guardar_autopartida()
             if self.sesion.sim.terminada:
                 self._avisar_fin()
+            return
+        if self.sesion.debe_deambular():
+            # Vista previa: los pickers pasean despacio antes de iniciar.
+            self._espera_deambular += dt
+            if self._espera_deambular >= cfg.DEMORA_DEAMBULAR:
+                self._espera_deambular = 0.0
+                self.anim.arrancar(self.sesion.posiciones())
+                self.sesion.deambular_vista()
 
     def _guardar_autopartida(self):
         try:
@@ -309,6 +332,10 @@ class App:
             pos = self._posicion_logica(ev.pos)
             self.vista.mouse_pos = pos
             widgets.actualizar_pos_mouse(pos)
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                widgets.actualizar_presionado(True)
+            elif ev.type == pygame.MOUSEBUTTONUP:
+                widgets.actualizar_presionado(False)
             ev = pygame.event.Event(ev.type, {**ev.dict, "pos": pos})
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1 and self.alerta.visible():
             if self.alerta.rect.collidepoint(ev.pos):
@@ -318,8 +345,17 @@ class App:
             self._evento_generador(ev)
         elif ev.type == pygame.KEYDOWN:
             self._teclado(ev.key)
+        elif ev.type == pygame.MOUSEWHEEL:
+            self._rueda(ev)
         elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             self._clic_mouse(ev.pos)
+
+    def _rueda(self, ev):
+        """La rueda recorre las waves cuando el puntero está sobre el panel."""
+        x, y = self._posicion_logica(pygame.mouse.get_pos())
+        dentro_x = cfg.PANEL_WAVES_X <= x <= cfg.PANEL_WAVES_X + cfg.PANEL_WAVES_W
+        if dentro_x and 360 <= y <= 750:
+            self.panel_waves.desplazar(-ev.y)
 
     # ---------- dibujo y bucle ----------
 

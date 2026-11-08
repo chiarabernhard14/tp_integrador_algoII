@@ -1,12 +1,14 @@
+from .PlanificadorViajesV import (
+    ALGORITMOS_CAMINO,
+    ESTRATEGIAS,
+    PlanificadorViajesV,
+)
+
 EPSILON = 1e-9
 
 
 def _id(picker):
     return str(picker.id).upper()
-
-
-def _pos(picker):
-    return tuple(picker.pos if hasattr(picker, "pos") else picker.posicion)
 
 
 def _capacidad(picker):
@@ -17,8 +19,8 @@ def _capacidad(picker):
     return float(picker.entidad.capacidad_carga_kg)
 
 
-def _lineas_wave(wave):
-    """Consolida productos repetidos y conserva el orden de la wave."""
+def _lineas_wave(wave, productos):
+    """Lee una wave, resuelve sus productos y consolida repetidos."""
     if isinstance(wave, dict):
         items = wave.get("products", wave.get("productos"))
         wave_id = wave.get("id")
@@ -31,12 +33,20 @@ def _lineas_wave(wave):
     for item in items:
         if isinstance(item, dict):
             producto = item.get("product", item.get("producto"))
+            producto_id = item.get("producto_id")
             cantidad = item.get("quantity", item.get("cantidad"))
         else:
             producto = getattr(item, "product", getattr(item, "producto", None))
+            producto_id = getattr(item, "producto_id", None)
             cantidad = getattr(item, "quantity", getattr(item, "cantidad", None))
-        if producto is None or not isinstance(cantidad, int) or isinstance(cantidad, bool) or cantidad <= 0:
-            raise ValueError("Cada línea de wave requiere un producto y una cantidad positiva.")
+        if producto is None and producto_id is not None:
+            producto = productos.get(str(producto_id).upper())
+        if producto is None:
+            raise ValueError(
+                f"La wave referencia un producto inexistente: {producto_id}."
+            )
+        if not isinstance(cantidad, int) or isinstance(cantidad, bool) or cantidad <= 0:
+            raise ValueError("Cada línea de wave requiere una cantidad positiva.")
         if producto.id not in lineas:
             lineas[producto.id] = [producto, 0]
         lineas[producto.id][1] += cantidad
@@ -51,25 +61,27 @@ class Asignador:
     """
 
     def __init__(
-        self, nav, zonas, waves, evaluador_viaje,
+        self, nav, zonas, waves, productos, racks,
+        algoritmo_camino="a_estrella", estrategia="cercania",
         max_combinaciones_exactas=5000,
     ):
         self.nav = nav
-        self.evaluador_viaje = evaluador_viaje
+        self.planificador = PlanificadorViajesV(
+            nav,
+            productos,
+            racks,
+            algoritmo_camino=algoritmo_camino,
+            estrategia=estrategia,
+        )
+        self.evaluador_viaje = self.planificador.evaluar_viaje
         self.max_combinaciones_exactas = max_combinaciones_exactas
         self.zonas = {}
         for zona in zonas.values():
-            celdas = set()
-            for x, y in zona.cells():
-                for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                    celda = (x + dx, y + dy)
-                    if celda in nav.grafo:
-                        celdas.add(celda)
             capacidad = float(zona.peso_max_kg)
             self.zonas[zona.id] = {
                 "restante": capacidad,
                 "restante_inicial": capacidad,
-                "celdas": celdas,
+                "celdas": set(nav.despacho_por_zona.get(zona.id, ())),
             }
 
         self.waves = []
@@ -81,10 +93,15 @@ class Asignador:
         self.imposibles = []
         self._estado_busqueda_ronda = None
 
+        ids_waves = set()
         for indice, wave in enumerate(waves, 1):
-            wave_id, lineas = _lineas_wave(wave)
+            wave_id, lineas = _lineas_wave(wave, productos)
+            id_wave = str(wave_id if wave_id is not None else indice)
+            if id_wave in ids_waves:
+                raise ValueError(f"La wave {id_wave} está repetida.")
+            ids_waves.add(id_wave)
             registro = {
-                "id": str(wave_id if wave_id is not None else indice),
+                "id": id_wave,
                 "orden": list(lineas),
                 "solicitados": {producto_id: cantidad for producto_id, (_, cantidad) in lineas.items()},
                 "pendiente": {producto_id: cantidad for producto_id, (_, cantidad) in lineas.items()},
@@ -96,11 +113,10 @@ class Asignador:
             }
             for producto_id, (producto, _) in lineas.items():
                 self.productos[producto_id] = producto
-                acceso = producto.acceso
-                if acceso is None:
+                if producto.acceso is None:
                     accesos = nav.accesos(producto.ubicacion[0], producto.ubicacion[1])
-                    acceso = min(accesos) if accesos else None
-                self.accesos[producto_id] = tuple(acceso) if acceso is not None else None
+                    producto.acceso = min(accesos) if accesos else None
+                self.accesos[producto_id] = producto.acceso
             self.waves.append(registro)
 
     def _opciones_de_viaje(self, picker, productos, peso, wave):

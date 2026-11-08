@@ -51,9 +51,9 @@ def generar_escenario(
         },
     }
     _crear_despacho(datos["warehouse"], ancho_x)
-    datos["pickers"] = _crear_pickers(pickers, ancho_x, azar)
     datos["productos"] = _crear_productos(racks, productos, modo_ubicacion, azar)
     datos["pedidos"] = _crear_pedidos(datos["productos"], pedidos, max_productos_pedido, azar)
+    datos["pickers"] = _crear_pickers(pickers, datos, azar)
     validar_escenario(datos)
     return datos
 
@@ -159,31 +159,31 @@ def _crear_despacho(warehouse, ancho_x):
         })
 
 
-def _crear_pickers(cantidad, ancho_x, azar):
-    # El pasillo inicial son las filas y=3 e y=4: ahí caben 2 * (ancho_x - 2) pickers.
-    columnas = ancho_x - 2
-    if cantidad > 2 * columnas:
+def _crear_pickers(cantidad, datos, azar):
+    """Ubica a cada picker en una celda transitable distinta del warehouse.
+
+    Se usa el grafo real de circulación para que la posición inicial sea
+    siempre una celda de pasillo alcanzable, sin importar el layout.
+    """
+    datos["pickers"] = []
+    warehouse = cargar_warehouse(datos)
+    if not warehouse.graph:
+        warehouse.build_reduced_graph_v2()
+    celdas = sorted(warehouse.graph)
+    if cantidad > len(celdas):
         raise ValueError(
-            f"El almacén solo tiene lugar para {2 * columnas} pickers en el pasillo inicial."
+            f"El almacén solo tiene {len(celdas)} celdas transitables "
+            f"para {cantidad} pickers."
         )
-    en_fila_3 = min(cantidad, columnas)
-    lista = []
-    for i in range(cantidad):
-        if i < en_fila_3:
-            y = 3
-            indice = i
-            total = en_fila_3
-        else:
-            y = 4
-            indice = i - en_fila_3
-            total = cantidad - en_fila_3
-        x = 1 + indice * (columnas // total)
-        lista.append({
+    elegidas = azar.sample(celdas, cantidad)
+    return [
+        {
             "id": f"PK_{i + 1:02d}",
             "posicion_inicial": {"x": x, "y": y},
             "capacidad_carga_kg": float(azar.choice((100, 150, 200))),
-        })
-    return lista
+        }
+        for i, (x, y) in enumerate(elegidas)
+    ]
 
 
 def _crear_productos(racks, cantidad, modo, azar):

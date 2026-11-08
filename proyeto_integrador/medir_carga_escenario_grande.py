@@ -20,14 +20,20 @@ INIT_ASIGNADOR_ORIGINAL = Asignador.__init__
 ASIGNAR_ORIGINAL = Asignador.asignar
 
 
-def init_asignador_con_umbral(self, nav, zonas, waves, evaluador_viaje,
-                              max_combinaciones_exactas=5000):
+def init_asignador_con_umbral(
+    self, nav, zonas, waves, productos, racks,
+    algoritmo_camino="a_estrella", estrategia="cercania",
+    max_combinaciones_exactas=5000,
+):
     return INIT_ASIGNADOR_ORIGINAL(
         self,
         nav,
         zonas,
         waves,
-        evaluador_viaje,
+        productos,
+        racks,
+        algoritmo_camino=algoritmo_camino,
+        estrategia=estrategia,
         max_combinaciones_exactas=UMBRAL_FORZADO,
     )
 

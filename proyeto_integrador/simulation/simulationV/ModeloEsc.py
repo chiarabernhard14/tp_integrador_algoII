@@ -243,8 +243,8 @@ class ModeloEscenario:
 
     # ---------- exportar ----------
 
-    def validar(self):
-        """Valida requisitos del editor y reutiliza la validación del Warehouse."""
+    def _errores_editor(self):
+        """Reglas del editor, sin recalcular la alcanzabilidad del escenario."""
         errores = []
         if not self.zonas:
             errores.append("Falta al menos una zona de despacho")
@@ -260,7 +260,11 @@ class ModeloEscenario:
             errores.append("Falta al menos un producto")
         elif sum(p["cantidad_disponible"] for p in self.productos) < 8:
             errores.append("El stock total debe alcanzar para generar los 8 pedidos del escenario")
+        return errores
 
+    def validar(self):
+        """Valida requisitos del editor y reutiliza la validación del Warehouse."""
+        errores = self._errores_editor()
         if not errores:
             try:
                 from simulation.simulationV.ScenarioV import validar_escenario
@@ -270,7 +274,7 @@ class ModeloEscenario:
         return errores
 
     def a_diccionario(self):
-        errores = self.validar()
+        errores = self._errores_editor()
         if errores:
             raise ValueError("Escenario inválido: " + " | ".join(errores))
         return self._construir_diccionario()

@@ -1,5 +1,5 @@
-from simulation.simulationV.SimutionV import Simulacion
-from simulation.simulationV.PlanificadorViajesV import (
+from simulation.simulationV.SimutionV import Simulacion, waves_de_estado
+from simulation.simulationV.AsignadorPickersV import (
     ALGORITMOS_CAMINO,
     ESTRATEGIAS,
 )
@@ -76,7 +76,11 @@ class Sesion:
     # ---------- comandos de simulación ----------
 
     def iniciar(self):
-        self.reiniciar()
+        # Si la simulación todavía no avanzó, se conserva la posición a la que
+        # llegaron los pickers deambulando en la vista previa.
+        if self.sim.tick > 0 or self.sim.terminada:
+            self.reiniciar()
+        self.paso_pendiente = False
         self.corriendo = True
 
     def pausar(self):
@@ -99,6 +103,21 @@ class Sesion:
     def debe_avanzar(self):
         return (self.corriendo or self.paso_pendiente) and not self.sim.terminada
 
+    def debe_deambular(self):
+        """Vista previa: los pickers pasean antes del primer tick."""
+        return (
+            not self.corriendo
+            and not self.paso_pendiente
+            and not self.sim.terminada
+            and self.sim.en_espera
+            and self.sim.tick == 0
+        )
+
+    def deambular_vista(self):
+        """Mueve un paso a los pickers en espera, sin avanzar el reloj."""
+        self.sim.deambular_vista()
+        self._refrescar_estado()
+
     def posiciones(self):
         posiciones = {}
         for p in self.estado["pickers"]:
@@ -114,8 +133,9 @@ class Sesion:
 
     # ---------- escenarios, waves y partidas ----------
 
-    def validar_datos(self, datos):
-        validar_escenario(datos)
+    # CÓDIGO MUERTO — REVISAR (no se llama desde ningún archivo vivo)
+    # def validar_datos(self, datos):
+    #     validar_escenario(datos)
 
     def _obtener_waves(self, datos, waves=None):
         """Usa waves explícitas o un generador externo si la sesión lo recibió.
@@ -179,9 +199,10 @@ class Sesion:
     def seleccionar_estrategia_recorrido(self, estrategia):
         return self._seleccionar_configuracion_recorrido(estrategia=estrategia)
 
-    def seleccionar_algoritmo_asignacion(self, algoritmo):
-        """Compatibilidad con llamadas antiguas: ahora se elige el buscador de caminos."""
-        return self.seleccionar_algoritmo_camino(algoritmo)
+    # CÓDIGO MUERTO — REVISAR (no se llama desde ningún archivo vivo)
+    # def seleccionar_algoritmo_asignacion(self, algoritmo):
+    #     """Compatibilidad con llamadas antiguas: ahora se elige el buscador de caminos."""
+    #     return self.seleccionar_algoritmo_camino(algoritmo)
 
     def usar_escenario_editado(self, datos, cantidad_pedidos=8, max_items=4):
         completo = dict(datos)
@@ -208,26 +229,7 @@ class Sesion:
 
     def usar_partida(self, datos, estado):
         """Restaura una instantánea ya leída, incluida la configuración guardada."""
-        waves_guardadas = [
-            {
-                "id": w["id"],
-                "productos": w["productos"],
-            }
-            for w in estado.get("waves", [])
-        ]
-        algoritmo = estado.get(
-            "algoritmo_camino",
-            estado.get("algoritmo_asignacion", self.algoritmo_camino),
-        )
-        estrategia = estado.get("estrategia", self.estrategia_recorrido)
-        self.algoritmo_camino = algoritmo
-        self.estrategia_recorrido = estrategia
-        sim = Simulacion(
-            datos,
-            waves_guardadas,
-            algoritmo_camino=algoritmo,
-            estrategia=estrategia,
-        )
+        sim = Simulacion(datos, waves_de_estado(estado))
         try:
             sim.restaurar(estado)
         except (KeyError, IndexError) as error:

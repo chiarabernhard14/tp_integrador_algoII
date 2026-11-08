@@ -20,34 +20,36 @@ class PanelLateral:
 
     def _crear_botones(self):
         b = self.botones
-        # Grupo 1: Algoritmos de camino
-        b.append(Boton("algoritmo_a_estrella", "A*", 900, 92, 100, 32))
-        b.append(Boton("algoritmo_dijkstra", "Dijkstra", 1008, 92, 312, 32))
+        x = cfg.PANEL_SIM_X + 20
+        # Los selectores comparten el ancho completo del panel.
+        b.append(Boton("algoritmo_a_estrella", "A*", x, 94, 180, 36))
+        b.append(Boton("algoritmo_dijkstra", "Dijkstra", x + 180, 94, 180, 36))
         
-        # Grupo 2: Estrategias de recorrido
-        b.append(Boton("estrategia_orden", "Orden", 900, 152, 100, 30))
-        b.append(Boton("estrategia_cercania", "Cercanía", 1008, 152, 128, 30))
-        b.append(Boton("estrategia_zonas", "Zonas", 1144, 152, 176, 30))
+        # Grupo 2: Estrategias de recorrido (mismo ancho entre las tres)
+        b.append(Boton("estrategia_orden", "Orden", x, 168, 120, 34))
+        b.append(Boton("estrategia_cercania", "Cercanía", x + 120, 168, 120, 34))
+        b.append(Boton("estrategia_zonas", "Zonas", x + 240, 168, 120, 34))
         
         # Grupo 3: Controles de reproducción
-        b.append(Boton("iniciar", "Iniciar", 900, 202, 74, 38, (22, 163, 74)))
-        b.append(Boton("pausar", "Pausar", 980, 202, 74, 38))
-        b.append(Boton("continuar", "Continuar", 1060, 202, 82, 38))
-        b.append(Boton("reiniciar", "Reiniciar", 1148, 202, 80, 38))
-        b.append(Boton("paso", "Paso", 1234, 202, 86, 38))
+        ancho_accion = 114
+        b.append(Boton("iniciar", "Iniciar", x, 220, ancho_accion, 40, (22, 163, 74)))
+        b.append(Boton("pausar", "Pausar", x + 123, 220, ancho_accion, 40))
+        b.append(Boton("continuar", "Continuar", x + 246, 220, ancho_accion, 40))
+        b.append(Boton("reiniciar", "Reiniciar", x, 272, ancho_accion, 40))
+        b.append(Boton("paso", "Paso", x + 123, 272, ancho_accion, 40))
         
         # Controles de velocidad
-        b.append(Boton("vel_menos", "-", 1236, 252, 38, 30))
-        b.append(Boton("vel_mas", "+", 1282, 252, 38, 30))
+        b.append(Boton("vel_menos", "−", x + 265, 294, 24, 22))
+        b.append(Boton("vel_mas", "+", x + 317, 294, 24, 22))
         
         # Grupo 4: Gestión de escenarios y partidas
-        b.append(Boton("generar", "Generar escenario", 900, 300, 202, 38))
-        b.append(Boton("cargar_escenario", "Cargar escenario", 1108, 300, 212, 38))
-        b.append(Boton("guardar_escenario", "Guardar escenario", 900, 348, 202, 38))
-        b.append(Boton("cargar_partida", "Cargar partida", 1108, 348, 212, 38))
+        b.append(Boton("generar", "Generar escenario", x, 370, 176, 40))
+        b.append(Boton("cargar_escenario", "Cargar escenario", x + 184, 370, 176, 40))
+        b.append(Boton("guardar_escenario", "Guardar escenario", x, 420, 176, 40))
+        b.append(Boton("cargar_partida", "Cargar partida", x + 184, 420, 176, 40))
         
         # Botón inferior de guardado
-        b.append(Boton("guardar_partida", "Guardar partida", 900, 396, 420, 38))
+        b.append(Boton("guardar_partida", "Guardar partida", x, 470, 360, 40))
 
     def boton_en(self, pos):
         for boton in self.botones:
@@ -56,21 +58,60 @@ class PanelLateral:
         return None
 
     def dibujar(self):
-        pygame.draw.rect(self.pantalla, cfg.PANEL, (880, 20, 460, 860), border_radius=18)
-        pygame.draw.rect(self.pantalla, cfg.BORDE_SUELO, (880, 20, 460, 860), 2, border_radius=18)
+        pygame.draw.rect(self.pantalla, cfg.TARJETA_PANEL,
+                         (cfg.PANEL_SIM_X, 20, cfg.PANEL_SIM_W, 860), border_radius=12)
+        pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL,
+                         (cfg.PANEL_SIM_X, 20, cfg.PANEL_SIM_W, 860), 1, border_radius=12)
         p = self.pincel
         f = self.fuentes
         
-        # Títulos y etiquetas con fuente negrita (más gordas)
-        p.texto("SIMULACIÓN", f.negrita, cfg.ACENTO, 900, 40)
-        p.texto("Camino", f.chico, cfg.APAGADO, 900, 74)
-        p.texto("Recorrido", f.chico, cfg.APAGADO, 900, 134)
+        # Títulos y etiquetas con fuente normal y tono más claro.
+        x = cfg.PANEL_SIM_X + 20
+        p.texto("SIMULACIÓN", f.negrita, cfg.ACENTO, x, 40)
+        p.texto("Camino", f.normal, cfg.TEXTO_SUAVE, x, 66)
+        p.texto("Recorrido", f.normal, cfg.TEXTO_SUAVE, x, 140)
         
+        self._dibujar_selector_segmentado(
+            ("algoritmo_a_estrella", "algoritmo_dijkstra"), self.sesion.algoritmo_camino,
+            {"algoritmo_a_estrella": "a_estrella", "algoritmo_dijkstra": "dijkstra"},
+        )
+        self._dibujar_selector_segmentado(
+            ("estrategia_orden", "estrategia_cercania", "estrategia_zonas"),
+            self.sesion.estrategia_recorrido,
+            {"estrategia_orden": "orden", "estrategia_cercania": "cercania",
+             "estrategia_zonas": "zonas"},
+        )
+        selectores = {"algoritmo_a_estrella", "algoritmo_dijkstra",
+                      "estrategia_orden", "estrategia_cercania", "estrategia_zonas",
+                      "vel_menos", "vel_mas"}
         for boton in self.botones:
-            self._dibujar_boton(boton)
+            if boton.nombre not in selectores:
+                self._dibujar_boton(boton)
             
-        p.texto(f"Velocidad  x{self.anim.velocidad():g}", f.chico, cfg.TEXTO, 900, 260)
+        pygame.draw.rect(self.pantalla, cfg.TARJETA_METRICA,
+                         (x + 246, 272, 114, 40), border_radius=8)
+        p.texto("Velocidad", f.mini, cfg.APAGADO, x + 303, 275, "centro")
+        p.texto(f"x{self.anim.velocidad():g}", f.mini, cfg.TEXTO,
+                x + 303, 298, "centro")
+        for boton in self.botones:
+            if boton.nombre in ("vel_menos", "vel_mas"):
+                dibujar_boton(self.pantalla, f.negrita, boton.rect, boton.texto)
         self._dibujar_pickers()
+
+    def _dibujar_selector_segmentado(self, nombres, valor_actual, valores):
+        botones = [next(b for b in self.botones if b.nombre == nombre) for nombre in nombres]
+        contenedor = botones[0].rect.unionall([b.rect for b in botones[1:]])
+        pygame.draw.rect(self.pantalla, cfg.PISTA_PROGRESO, contenedor, border_radius=10)
+        pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL, contenedor, 1, border_radius=10)
+        for boton in botones:
+            if valores[boton.nombre] == valor_actual:
+                pygame.draw.rect(self.pantalla, (58, 112, 190),
+                                 boton.rect.inflate(-4, -4), border_radius=8)
+                color = (255, 255, 255)
+            else:
+                color = cfg.TEXTO_SUAVE
+            self.pincel.texto(boton.texto, self.fuentes.negrita, color,
+                              boton.rect.centerx, boton.rect.centery, "cc")
 
     def _dibujar_boton(self, boton):
         algoritmos = {
@@ -105,43 +146,54 @@ class PanelLateral:
         pickers = self.sesion.estado["pickers"]
         visibles = pickers[:cfg.MAX_TARJETAS]
         
-        # Ubicación del título de pickers un poco más abajo del último botón
-        p.texto(f"PICKERS ({len(pickers)})", f.mini, cfg.APAGADO, 900, 448)
+        x = cfg.PANEL_SIM_X + 20
+        ancho = cfg.PANEL_SIM_W - 40
+        # Título de pickers, con el aviso de los que no entran a la derecha.
+        p.texto(f"PICKERS ({len(pickers)})", f.mini, cfg.TEXTO_SUAVE, x, 530)
+        if len(pickers) > cfg.MAX_TARJETAS:
+            p.texto(f"+{len(pickers) - cfg.MAX_TARJETAS} más", f.mini,
+                    cfg.TEXTO_SUAVE, x + ancho, 530, "der")
         
-        y_inicio = 472
-        alto_tarjeta = 58
-        paso = 66  # Mantiene las tarjetas de los pickers juntas y compactas
+        y_inicio = 554
+        alto_tarjeta = 72
+        paso = 78  # Mantiene separación entre tarjetas y margen al pie del panel.
         
         for i, picker in enumerate(visibles):
             y = y_inicio + i * paso
             color = cfg.COLORES_PICKER[i % len(cfg.COLORES_PICKER)]
-            pygame.draw.rect(self.pantalla, cfg.TARJETA, (900, y, 420, alto_tarjeta), border_radius=8)
-            pygame.draw.rect(self.pantalla, cfg.BORDE, (900, y, 420, alto_tarjeta), 1, border_radius=8)
-            pygame.draw.rect(self.pantalla, color, (900, y + 8, 5, 42), border_radius=2)
-            p.texto(picker["id"], f.negrita, cfg.TEXTO, 914, y + 6)
+            pygame.draw.rect(self.pantalla, cfg.TARJETA, (x, y, ancho, alto_tarjeta), border_radius=8)
+            pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL,
+                             (x, y, ancho, alto_tarjeta), 1, border_radius=8)
+            pygame.draw.rect(self.pantalla, color, (x, y + 8, 5, alto_tarjeta - 16), border_radius=2)
+            p.texto(picker["id"], f.negrita, cfg.TEXTO, x + 14, y + 6)
             nombre = cfg.NOMBRE_ESTADO_PICKER.get(picker["estado"], picker["estado"])
             color_estado = cfg.COLOR_ESTADO_PICKER.get(picker["estado"], cfg.TEXTO)
-            p.texto(nombre, f.chico, color_estado, 1310, y + 8, "der")
+            p.texto(nombre, f.chico, color_estado, x + ancho - 10, y + 7, "der")
             objetivo = picker["objetivo"] if picker["objetivo"] is not None else "-"
-            capacidad = self.sesion.capacidades.get(picker["id"], 0)
             detalle = (f"Objetivo {objetivo}   Pend. {len(picker['pendientes'])}   "
-                       f"A bordo {len(picker['recogidos'])}   Cap. {capacidad:g} kg")
-            p.texto(p.recortar(detalle, f.chico, 400), f.chico, cfg.APAGADO, 914, y + 34)
-            
-        if len(pickers) > cfg.MAX_TARJETAS:
-            y_mas = y_inicio + len(visibles) * paso
-            p.texto(f"+{len(pickers) - cfg.MAX_TARJETAS} pickers más",
-                    f.mini, cfg.APAGADO, 1310, y_mas, "der")
+                       f"Recogidos {len(picker['recogidos'])}")
+            p.texto(p.recortar(detalle, f.chico, ancho - 20), f.chico, cfg.TEXTO_SUAVE,
+                    x + 14, y + 27)
+            metricas = (f"Pasos {picker.get('pasos_trabajo', 0)}   "
+                        f"Entregas {len(picker.get('waves_hechas', []))}   "
+                        f"Saltos {picker.get('saltos', 0)}   "
+                        f"Cap. {self.sesion.capacidades.get(picker['id'], 0):g} kg")
+            p.texto(p.recortar(metricas, f.chico, ancho - 20), f.chico, cfg.TEXTO_SUAVE,
+                    x + 14, y + 50)
 
 class PanelWaves:
-    """Columna de ticks, estado de cada wave y registro de eventos."""
+    """Panel derecho: métricas de ejecución, progreso de waves y registro."""
 
-    X = 1360
-    ANCHO = 380
-    MAX_WAVES = 8
-    MAX_LOG = 8
-    ALTO_TARJETA = 52
-    PASO_TARJETA = 64
+    X = cfg.PANEL_WAVES_X
+    ANCHO = cfg.PANEL_WAVES_W
+    PADDING = 24
+    MAX_WAVES = 5
+    MAX_LOG = 4
+
+    ALTO_METRICA = 48
+    PASO_METRICA = 52
+    ALTO_WAVE = 68
+    PASO_WAVE = 72
 
     COLORES_WAVE = {
         "CREADA": cfg.APAGADO,
@@ -161,70 +213,257 @@ class PanelWaves:
         "INCOMPLETA": "Incompleta",
     }
 
+    # Las waves activas o incompletas se muestran antes que las resueltas.
+    PRIORIDAD_WAVE = {
+        "EN_PROCESO": 0,
+        "ASIGNADA": 1,
+        "INCOMPLETA": 2,
+        "PENDIENTE": 3,
+        "CREADA": 3,
+        "COMPLETADA": 4,
+    }
+
     def __init__(self, pincel, fuentes, sesion):
         self.pincel = pincel
         self.pantalla = pincel.pantalla
         self.fuentes = fuentes
         self.sesion = sesion
+        self.desplazamiento = 0
+
+    def desplazar(self, pasos):
+        """Mueve la lista de waves visible (rueda del mouse)."""
+        total = len(self.sesion.estado.get("waves", []))
+        maximo = max(0, total - self.MAX_WAVES)
+        self.desplazamiento = max(0, min(maximo, self.desplazamiento + pasos))
 
     def dibujar(self):
         x = self.X
         ancho = self.ANCHO
-        pygame.draw.rect(self.pantalla, cfg.PANEL, (x, 20, ancho, 860), border_radius=18)
-        pygame.draw.rect(self.pantalla, cfg.BORDE_SUELO, (x, 20, ancho, 860), 2, border_radius=18)
+        pygame.draw.rect(self.pantalla, cfg.TARJETA_PANEL,
+                         (x, 20, ancho, 860), border_radius=12)
+        pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL,
+                         (x, 20, ancho, 860), 1, border_radius=12)
 
+        estado = self.sesion.estado
+        self._dibujar_encabezado(estado)
+        self._dibujar_metricas(estado)
+        self._dibujar_resumen(estado)
+        self._dibujar_waves(estado)
+        self._dibujar_log()
+
+    # ---------- encabezado ----------
+
+    def _dibujar_encabezado(self, estado):
         p = self.pincel
         f = self.fuentes
-        estado = self.sesion.estado
-        p.texto("TICKS Y WAVES", f.sub, cfg.ACENTO, x + 20, 76)
-        estado_sim = "Finalizada" if estado.get("terminada") else (
-            "En curso" if self.sesion.corriendo else "En pausa"
+        x = self.X + self.PADDING
+        ancho = self.ANCHO - 2 * self.PADDING
+
+        p.texto("MÉTRICAS", f.negrita, cfg.TEXTO, x, 44)
+
+        if estado.get("terminada"):
+            texto, color = "FINALIZADA", cfg.VERDE
+        elif self.sesion.corriendo:
+            texto, color = "EN CURSO", cfg.ACENTO
+        else:
+            texto, color = "EN PAUSA", cfg.AMARILLO
+        self._dibujar_pildora(x + ancho, 45, texto, color)
+
+        algoritmo = ("A*" if self.sesion.algoritmo_camino == "a_estrella"
+                     else self.sesion.algoritmo_camino.title())
+        estrategia = self.sesion.estrategia_recorrido.title()
+        p.texto(f"{algoritmo}  ·  {estrategia}", f.chico, cfg.TEXTO_SUAVE, x, 70)
+
+    def _dibujar_pildora(self, x_derecha, y, texto, color):
+        p = self.pincel
+        f = self.fuentes
+        ancho = f.mini.size(texto)[0] + 20
+        x = x_derecha - ancho
+        p.rect_alfa(x, y, ancho, 18, (color[0], color[1], color[2], 46), 9)
+        pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL, (x, y, ancho, 18), 1, border_radius=9)
+        p.texto(texto, f.mini, color, x + ancho // 2, y + 3, "centro")
+
+    # ---------- métricas ----------
+
+    def _dibujar_metricas(self, estado):
+        pickers = estado.get("pickers", [])
+        waves = estado.get("waves", [])
+
+        pasos = sum(p.get("pasos_trabajo", 0) for p in pickers)
+        entregas = sum(len(p.get("waves_hechas", [])) for p in pickers)
+        completadas = sum(
+            1 for wave in waves
+            if str(wave.get("estado", "")).upper() == "COMPLETADA"
         )
-        p.texto(f"Tick {estado['tick']}  ·  {estado_sim}", f.chico, cfg.TEXTO, x + 20, 128)
-        p.texto("ESTADO DE WAVES", f.mini, cfg.APAGADO, x + 20, 164)
+
+        unidades_total = 0
+        unidades_hechas = 0
+        for wave in waves:
+            total, hechas = self._progreso_wave(wave, pickers)
+            unidades_total += total
+            unidades_hechas += hechas
+
+        nodos, _, _ = self._metricas_planificador()
+        tick_final = estado.get("tick_trabajo")
+
+        tarjetas = (
+            ("TICK ACTUAL", str(estado.get("tick", 0)), cfg.TEXTO),
+            ("TICK FINAL", "—" if tick_final is None else str(tick_final),
+             cfg.AMARILLO),
+            ("WAVES", f"{completadas}/{len(waves)}", cfg.VERDE),
+            ("UNIDADES", f"{unidades_hechas}/{unidades_total}", cfg.VERDE),
+            ("DISTANCIA (PASOS)", self._formato_entero(pasos), cfg.ACENTO),
+            ("NODOS EXP.", self._formato_entero(nodos), cfg.NARANJA),
+            ("TIEMPO ASIGN.",
+             self._formato_tiempo(estado.get("tiempo_asignacion_ms", 0.0)),
+             cfg.AMARILLO),
+            ("ASIGN. MÁX.",
+             self._formato_tiempo(estado.get("max_asignacion_ms", 0.0)),
+             cfg.NARANJA),
+        )
+
+        x = self.X + self.PADDING
+        ancho_total = self.ANCHO - 2 * self.PADDING
+        ancho = (ancho_total - 8) // 2
+        for indice, (etiqueta, valor, color) in enumerate(tarjetas):
+            columna = indice % 2
+            fila = indice // 2
+            x_tarjeta = x + columna * (ancho + 8)
+            y_tarjeta = 94 + fila * self.PASO_METRICA
+            self._dibujar_tarjeta_metrica(
+                x_tarjeta, y_tarjeta, ancho, etiqueta, valor, color
+            )
+
+    def _dibujar_tarjeta_metrica(self, x, y, ancho, etiqueta, valor, color):
+        p = self.pincel
+        f = self.fuentes
+        pygame.draw.rect(self.pantalla, cfg.TARJETA_METRICA,
+                         (x, y, ancho, self.ALTO_METRICA), border_radius=9)
+        p.texto(p.recortar(etiqueta, f.mini, ancho - 24), f.mini, cfg.APAGADO,
+                x + 12, y + 5)
+        p.texto(p.recortar(valor, f.sub, ancho - 24), f.sub, cfg.BLANCO_SUAVE,
+                x + 12, y + 20)
+
+    def _metricas_planificador(self):
+        sim = getattr(self.sesion, "sim", None)
+        planificador = getattr(sim, "planificador", None)
+        nav = getattr(sim, "nav", None)
+        nodos = getattr(planificador, "nodos_expandidos", 0)
+        busquedas_plan = getattr(planificador, "busquedas", 0)
+        busquedas_nav = getattr(nav, "busquedas", 0)
+        return nodos, busquedas_plan, busquedas_nav
+
+    def _dibujar_resumen(self, estado):
+        p = self.pincel
+        f = self.fuentes
+        x = self.X + self.PADDING
+        ancho = self.ANCHO - 2 * self.PADDING
+
+        llamadas = estado.get("llamadas_asignacion", 0)
+        total_ms = estado.get("tiempo_asignacion_ms", 0.0)
+        promedio = total_ms / llamadas if llamadas else 0.0
+        _, busquedas_plan, busquedas_nav = self._metricas_planificador()
+
+        entregas = sum(len(p.get("waves_hechas", []))
+                       for p in estado.get("pickers", []))
+        linea_1 = (f"Prom. {self._formato_tiempo(promedio)}"
+                   f"   ·   {llamadas} llamadas   ·   {entregas} entregas")
+        linea_2 = (f"Saltos {estado.get('saltos', 0)}"
+                   f"   ·   {self._formato_entero(busquedas_nav)} búsq. camino"
+                   f"   ·   {self._formato_entero(busquedas_plan)} búsq. viajes")
+        pygame.draw.rect(self.pantalla, cfg.TARJETA_METRICA,
+                         (x, 308, ancho, 48), border_radius=9)
+        p.texto(p.recortar(linea_1, f.mini, ancho - 24), f.mini,
+                cfg.TEXTO_SUAVE, x + 12, 314)
+        p.texto(p.recortar(linea_2, f.mini, ancho - 24), f.mini,
+                cfg.TEXTO_SUAVE, x + 12, 332)
+
+    # ---------- waves ----------
+
+    def _dibujar_waves(self, estado):
+        p = self.pincel
+        f = self.fuentes
+        x = self.X + self.PADDING
+        ancho = self.ANCHO - 2 * self.PADDING
 
         waves = estado.get("waves", [])
-        visibles = waves[:self.MAX_WAVES]
-        y_inicio = 200 if len(visibles) != 1 else 390
-        y_final = 600
-        if len(visibles) > 1:
-            paso = min(220, max(self.ALTO_TARJETA + 10,
-                                (y_final - y_inicio) // (len(visibles) - 1)))
-        else:
-            paso = 0
-        for indice, wave in enumerate(visibles):
-            self._dibujar_wave(wave, y_inicio + indice * paso)
-        if len(waves) > self.MAX_WAVES:
-            y_mas = y_inicio + (len(visibles) - 1) * paso + self.ALTO_TARJETA + 8
-            p.texto(f"+{len(waves) - self.MAX_WAVES} waves más", f.mini,
-                    cfg.APAGADO, x + 20, min(830, y_mas))
-        else:
-            y_mas = None
+        p.texto("WAVES", f.mini, cfg.TEXTO_SUAVE, x, 370)
 
-        y_ultima = y_inicio + (len(visibles) - 1) * paso if visibles else 164
-        y_log = max(650, y_ultima + self.ALTO_TARJETA + 30)
-        if y_mas is not None:
-            y_log = max(y_log, y_mas + 26)
-        y_log = min(y_log, 730)
-        lineas_visibles = max(1, min(self.MAX_LOG, (875 - y_log - 18) // 22 + 1))
-        self._dibujar_log(y_log, lineas_visibles)
+        ordenadas = sorted(waves, key=self._clave_wave)
+        total = len(ordenadas)
+        maximo = max(0, total - self.MAX_WAVES)
+        self.desplazamiento = min(self.desplazamiento, maximo)
+        inicio = self.desplazamiento
+        visibles = ordenadas[inicio:inicio + self.MAX_WAVES]
+
+        if total > self.MAX_WAVES:
+            rango = f"{inicio + 1}–{inicio + len(visibles)} de {total}"
+        else:
+            rango = f"{total} en total"
+        p.texto(rango, f.mini, cfg.TEXTO_SUAVE, x + ancho, 370, "der")
+
+        y_inicio = 390
+        for indice, wave in enumerate(visibles):
+            self._dibujar_wave(wave, y_inicio + indice * self.PASO_WAVE)
+
+        if maximo:
+            self._dibujar_barra_waves(x, ancho, y_inicio, total, maximo)
+
+    def _dibujar_barra_waves(self, x, ancho, y_inicio, total, maximo):
+        """Barra fina a la derecha: indica que hay más waves para recorrer."""
+        alto = self.MAX_WAVES * self.PASO_WAVE - (self.PASO_WAVE - self.ALTO_WAVE)
+        x_barra = x + ancho + 4
+        pygame.draw.rect(self.pantalla, cfg.PISTA_PROGRESO,
+                         (x_barra, y_inicio, 4, alto), border_radius=2)
+        alto_thumb = max(18, int(alto * self.MAX_WAVES / total))
+        recorrido = alto - alto_thumb
+        y_thumb = y_inicio + int(recorrido * self.desplazamiento / maximo)
+        pygame.draw.rect(self.pantalla, cfg.ACENTO,
+                         (x_barra, y_thumb, 4, alto_thumb), border_radius=2)
+
+    def _clave_wave(self, wave):
+        estado = str(wave.get("estado", "CREADA")).upper()
+        return (self.PRIORIDAD_WAVE.get(estado, 3),
+                wave.get("numero", 0), str(wave.get("id", "")))
 
     def _dibujar_wave(self, wave, y):
-        x = self.X + 20
-        ancho = self.ANCHO - 40
-        pygame.draw.rect(self.pantalla, cfg.TARJETA, (x, y, ancho, self.ALTO_TARJETA), border_radius=8)
-        pygame.draw.rect(self.pantalla, cfg.BORDE, (x, y, ancho, self.ALTO_TARJETA), 1, border_radius=8)
+        x = self.X + self.PADDING
+        ancho = self.ANCHO - 2 * self.PADDING
+        pygame.draw.rect(self.pantalla, cfg.TARJETA,
+                         (x, y, ancho, self.ALTO_WAVE), border_radius=8)
+        pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL,
+                         (x, y, ancho, self.ALTO_WAVE), 1, border_radius=8)
 
         estado = str(wave.get("estado", "CREADA")).upper()
         nombre_estado = self.NOMBRES_WAVE.get(estado, estado.replace("_", " ").title())
         color = self.COLORES_WAVE.get(estado, cfg.APAGADO)
+        pygame.draw.rect(self.pantalla, color,
+                         (x, y + 12, 4, self.ALTO_WAVE - 24), border_radius=2)
+
         p = self.pincel
         f = self.fuentes
-        p.texto(str(wave.get("id", "Wave")), f.negrita, cfg.TEXTO, x + 10, y + 4)
-        p.texto(nombre_estado, f.mini, color, x + ancho - 10, y + 6, "der")
+        p.texto(str(wave.get("id", "Wave")), f.negrita, cfg.TEXTO, x + 12, y + 10)
+        p.texto(nombre_estado, f.mini, color, x + ancho - 12, y + 10, "der")
+
         pickers = self._pickers_asignados(wave)
-        detalle = self._detalle_progreso(wave)
-        p.texto(f"Pickers: {pickers}   ·   {detalle}", f.chico, cfg.APAGADO, x + 10, y + 29)
+        p.texto(p.recortar(f"Pickers: {pickers}", f.mini, ancho - 24),
+                f.mini, cfg.TEXTO_SUAVE, x + 12, y + 31)
+
+        total, hechas = self._progreso_wave(wave)
+        ratio = hechas / total if total else (1.0 if estado == "COMPLETADA" else 0.0)
+        ratio = max(0.0, min(1.0, ratio))
+
+        y_barra = y + 53
+        ancho_barra = ancho - 92
+        pygame.draw.rect(self.pantalla, cfg.PISTA_PROGRESO,
+                         (x + 12, y_barra, ancho_barra, 6), border_radius=3)
+        if ratio > 0:
+            pygame.draw.rect(self.pantalla, color,
+                             (x + 12, y_barra, int(ancho_barra * ratio), 6),
+                             border_radius=3)
+
+        detalle = f"{self._formato_entero(total)} u." if not total else f"{hechas}/{total} u."
+        p.texto(detalle, f.mini, cfg.TEXTO_SUAVE, x + ancho - 12, y + 49, "der")
 
     def _pickers_asignados(self, wave):
         wave_id = str(wave.get("id", ""))
@@ -235,25 +474,61 @@ class PanelWaves:
         ]
         return ", ".join(asignados) if asignados else "—"
 
-    def _detalle_progreso(self, wave):
+    def _progreso_wave(self, wave, pickers=None):
+        """Unidades recogidas de la wave según los pickers, no lo reservado."""
         productos = wave.get("productos")
-        pendientes = wave.get("pendiente")
-        if isinstance(productos, list) and isinstance(pendientes, dict):
-            total = sum(linea.get("cantidad", 0) for linea in productos)
-            quedan = sum(pendientes.values())
-            return f"Recogidas {max(0, total - quedan)}/{total} u."
+        if not isinstance(productos, list):
+            return 0, 0
 
-        ids_pedidos = wave.get("pedidos")
-        if ids_pedidos:
-            return f"{len(ids_pedidos)} pedidos"
-        return "Progreso no disponible"
+        total = sum(linea.get("cantidad", 0) for linea in productos)
+        if pickers is None:
+            pickers = self.sesion.estado.get("pickers", [])
+        wave_id = str(wave.get("id", ""))
+        hechas = sum(
+            recogido.get("cantidad", 0)
+            for picker in pickers
+            for recogido in picker.get("recogidos", [])
+            if str(recogido.get("wave_id")) == wave_id
+        )
+        if str(wave.get("estado", "")).upper() == "COMPLETADA":
+            hechas = total
+        if total:
+            hechas = min(hechas, total)
+        return total, hechas
 
-    def _dibujar_log(self, y_titulo, cantidad_lineas):
+    # ---------- registro ----------
+
+    def _dibujar_log(self):
         p = self.pincel
         f = self.fuentes
-        x = self.X + 20
-        p.texto("REGISTRO POR TICK", f.mini, cfg.APAGADO, x, y_titulo)
-        lineas = self.sesion.estado.get("log", [])[-cantidad_lineas:]
-        for i, linea in enumerate(lineas):
-            p.texto(p.recortar(linea, f.mini, self.ANCHO - 40), f.mini,
-                    cfg.TEXTO, x, y_titulo + 18 + i * 22)
+        x = self.X + self.PADDING
+        ancho = self.ANCHO - 2 * self.PADDING
+        y_titulo = 754
+
+        p.texto("REGISTRO", f.mini, cfg.TEXTO_SUAVE, x, y_titulo)
+        lineas = self.sesion.estado.get("log", [])[-self.MAX_LOG:]
+        caja = pygame.Rect(x, y_titulo + 20, ancho, 86)
+        pygame.draw.rect(self.pantalla, cfg.TARJETA_METRICA, caja, border_radius=9)
+        for indice, linea in enumerate(lineas):
+            p.texto(p.recortar(linea, f.mini, ancho - 24), f.mini, cfg.TEXTO,
+                    x + 12, caja.y + 12 + indice * 15)
+
+    # ---------- formato ----------
+
+    @staticmethod
+    def _formato_entero(valor):
+        valor = int(valor)
+        if valor >= 1_000_000:
+            return f"{valor / 1_000_000:.1f}M"
+        if valor >= 10_000:
+            return f"{valor / 1_000:.1f}k"
+        return str(valor)
+
+    @staticmethod
+    def _formato_tiempo(milisegundos):
+        milisegundos = float(milisegundos)
+        if milisegundos <= 0:
+            return "0 ms"
+        if milisegundos >= 1000:
+            return f"{milisegundos / 1000:.2f} s"
+        return f"{milisegundos:.1f} ms"
