@@ -61,6 +61,3 @@ class Picker:
         if not isinstance(value, list):
             raise TypeError("current_route debe ser una lista.")
         self._current_route = value
-
-    def pick(self, item):
-        item.pick_item()

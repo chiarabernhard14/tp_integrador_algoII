@@ -9,13 +9,6 @@ class OrderItem:
         self.producto_id = producto_id
         self.picked = False
 
-    def pick_item(self):
-        if self.picked:
-            raise ValueError("Este item ya fue recogido.")
-        if self.producto is not None:
-            self.producto.take_product(self.cantidad)
-            self.picked = True
-
     @property
     def producto_id(self):
         return self._producto_id
