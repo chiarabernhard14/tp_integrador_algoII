@@ -63,4 +63,4 @@ class Picker:
         self._current_route = value
 
     def pick(self, item):
-        item.pick_item()
+        item.pick_item(self.posicion)

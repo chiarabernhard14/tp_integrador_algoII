@@ -917,10 +917,6 @@ class Warehouse:
                             pendientes_componente.append(vecino)
 
                     vertices_limite = set(componente)
-                    for nodo in componente:
-                        vertices_limite.update(
-                            vecinos_pasillo[nodo] - nodos_sector
-                        )
 
                     x_min = min(nodo[0] for nodo in vertices_limite)
                     x_max = max(nodo[0] for nodo in vertices_limite)
