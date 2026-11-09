@@ -122,7 +122,7 @@ class Wave:
             raise ValueError("No se puede agregar un pedido nulo.")
         if any(o.id == order.id for o in self.orders):
             return
-        if self.max_orders_capacity > 0 and len(self.orders) >= self.max_orders_capacity:
+        if len(self.orders) >= self.max_orders_capacity:
             raise ValueError("Capacidad máxima de pedidos alcanzada.")
         self.orders.append(order)
 
@@ -131,18 +131,11 @@ class Wave:
         self._validar_registro_producto(registro)
 
         ya_incluido = any(o.id == order.id for o in self.orders)
-        if (
-            not ya_incluido
-            and self.max_orders_capacity > 0
-            and len(self.orders) >= self.max_orders_capacity
-        ):
+        if not ya_incluido and len(self.orders) >= self.max_orders_capacity:
             raise ValueError("Capacidad máxima de pedidos alcanzada.")
 
         unidades_actuales = sum(item["quantity"] for item in self.products)
-        if (
-            self.max_products_capacity > 0
-            and unidades_actuales + quantity > self.max_products_capacity
-        ):
+        if unidades_actuales + quantity > self.max_products_capacity:
             raise ValueError("Capacidad máxima de unidades alcanzada.")
 
         # Validar todo antes de modificar el objeto.
