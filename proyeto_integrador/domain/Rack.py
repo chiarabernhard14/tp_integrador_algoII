@@ -5,6 +5,7 @@ from .Product import Product
 class Rack(RectangularElement):
 
     def __init__(self, id, ubicacion, ancho, alto):
+        
         self._validate_dimensions(ancho, alto)
         super().__init__(ubicacion, ancho, alto)
         self.id = id

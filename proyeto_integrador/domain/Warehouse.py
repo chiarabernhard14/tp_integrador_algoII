@@ -11,7 +11,6 @@ from .Product import Product
 from .Order import Order
 from .Vertice import Vertice
 
-
 class Warehouse:
 
     def __init__(
@@ -274,7 +273,7 @@ class Warehouse:
         if picker.id in self._pickers:
             raise ValueError("Ya existe un picker con el mismo id.")
         self.validate_inside_warehouse(picker.posicion)
-
+        
         self._pickers[picker.id] = picker
 
     # Productos
@@ -917,10 +916,6 @@ class Warehouse:
                             pendientes_componente.append(vecino)
 
                     vertices_limite = set(componente)
-                    for nodo in componente:
-                        vertices_limite.update(
-                            vecinos_pasillo[nodo] - nodos_sector
-                        )
 
                     x_min = min(nodo[0] for nodo in vertices_limite)
                     x_max = max(nodo[0] for nodo in vertices_limite)
@@ -1198,4 +1193,4 @@ class Warehouse:
         
         self.graph[origen].insert(0, (destino, distancia))
 
-
+  
