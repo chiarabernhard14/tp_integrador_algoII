@@ -8,11 +8,7 @@ def _id(picker):
 
 
 def _capacidad(picker):
-    if hasattr(picker, "capacidad"):
-        return float(picker.capacidad)
-    if hasattr(picker, "capacidad_carga_kg"):
-        return float(picker.capacidad_carga_kg)
-    return float(picker.entidad.capacidad_carga_kg)
+    return float(picker.capacidad)
 
 
 def _lineas_wave(wave, productos):

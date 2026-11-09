@@ -1,4 +1,4 @@
-from .OrderItemE import OrderItem
+from .OrderItem import OrderItem
 
 class Order:
 

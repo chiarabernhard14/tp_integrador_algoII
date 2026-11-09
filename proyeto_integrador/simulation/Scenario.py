@@ -348,27 +348,6 @@ def generar_pedidos(productos, cantidad=8, max_productos_pedido=4):
     """Pedidos al azar sobre una lista de productos (la usa el editor de mapa)."""
     return _crear_pedidos(productos, cantidad, max_productos_pedido, random.Random())
 
-def _verificar_alcanzables(warehouse):
-    nav = Navegacion(warehouse)
-    if not nav.despacho:
-        raise ValueError("Ninguna celda de pasillo es adyacente a una zona de despacho.")
-    origen = next(iter(nav.despacho))
-    for producto in warehouse.productos.values():
-        accesos = nav.accesos(producto.ubicacion[0], producto.ubicacion[1])
-        if nav.camino(origen, accesos) is None:
-            raise ValueError(f"{producto.id} no es alcanzable desde el despacho.")
-        vuelta = None
-        for acceso in accesos:
-            vuelta = nav.camino(acceso, nav.despacho)
-            if vuelta is not None:
-                break
-        if vuelta is None:
-            raise ValueError(f"No hay camino de regreso desde {producto.id} al despacho.")
-    for picker in warehouse.pickers.values():
-        pos = (picker.posicion[0], picker.posicion[1])
-        if pos not in nav.vecinos:
-            raise ValueError(f"{picker.id} no esta sobre una celda de pasillo.")
-
 def validar_escenario(datos):
     """Valida un escenario generado, cargado o editado: estructura (Warehouse) y alcanzabilidad.
 
@@ -395,7 +374,7 @@ def validar_escenario(datos):
         inaccesibles = _ids_de_excepcion_inaccesible(str(error))
     else:
         try:
-            inaccesibles = _verificar_alcanzables(warehouse)
+            Navegacion.verificar_alcanzables(warehouse)
         except ProductoInaccesible as error:
             mensaje_inaccesibles = str(error)
             inaccesibles = _ids_de_excepcion_inaccesible(str(error))

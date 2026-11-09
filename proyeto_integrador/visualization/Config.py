@@ -110,9 +110,9 @@ SOMBRA_BOTON = (0, 0, 0, 90)
 
 # Texto (contraste mínimo 4.5:1 sobre fondo del panel)
 TEXTO_PRINCIPAL = (232, 236, 244)   # casi blanco (#E8ECF4) para etiquetas, estado, botones
-TEXTO_SECUNDARIO = (184, 193, 209)  # gris claro (#B8C1D1) para ayuda, atajos, secundario
+TEXTO_SECUNDARIO = (216, 224, 238)  # gris muy claro para ayuda, atajos, secundario
 TEXTO_DESCATIVADO = (154, 165, 184) # gris medio-bajo para deshabilitados (máx #9AA5B8)
-TEXTO_CUERPO = (184, 193, 209)      # gris claro para texto de cuerpo / secundario
+TEXTO_CUERPO = (216, 224, 238)      # gris claro para texto de cuerpo / secundario
 
 # Botones
 BOTON_FONDO = (75, 82, 99)        # fondo normal

@@ -215,13 +215,13 @@ class PanelLateral:
 
     def _dibujar_pildora_estado(self, x_derecha, y, texto, color):
         f = self.fuentes
-        ancho = f.negrita.size(texto)[0] + 34
+        ancho = f.chico.size(texto)[0] + 32
         x = x_derecha - ancho
-        self.pincel.rect_alfa(x, y, ancho, 24, (color[0], color[1], color[2], 55), 12)
-        pygame.draw.rect(self.pantalla, color, (x, y, ancho, 24), 1, border_radius=12)
-        pygame.draw.circle(self.pantalla, color, (x + 14, y + 12), 5)
-        self.pincel.texto(texto, f.negrita, (255, 255, 255), x + 26,
-                          y + 12 - f.negrita.get_height() // 2)
+        self.pincel.rect_alfa(x, y, ancho, 22, (color[0], color[1], color[2], 55), 11)
+        pygame.draw.rect(self.pantalla, color, (x, y, ancho, 22), 1, border_radius=11)
+        pygame.draw.circle(self.pantalla, color, (x + 13, y + 11), 4)
+        self.pincel.texto(texto, f.chico, (255, 255, 255), x + 22,
+                          y + 11 - f.chico.get_height() // 2)
 
     def _dibujar_tarjeta_picker(self, indice, picker, y):
         p = self.pincel
@@ -241,12 +241,12 @@ class PanelLateral:
         pygame.draw.rect(self.pantalla, color, (x + 1, y + 10, 6, alto - 20), border_radius=3)
 
         # Fila 1: identificador, producto objetivo y estado.
-        ancho_id = p.texto(picker["id"], f.sub, cfg.BLANCO_SUAVE, x + 18, y + 4)
+        ancho_id = p.texto(picker["id"], f.negrita, cfg.BLANCO_SUAVE, x + 18, y + 8)
         if picker["objetivo"] is not None:
-            p.texto(f"→ {picker['objetivo']}", f.normal, cfg.TEXTO_SUAVE,
-                    x + 18 + ancho_id + 10, y + 8)
+            p.texto(f"→ {picker['objetivo']}", f.chico, cfg.TEXTO_SUAVE,
+                    x + 18 + ancho_id + 8, y + 11)
         nombre = cfg.NOMBRE_ESTADO_PICKER.get(estado, estado)
-        self._dibujar_pildora_estado(x + ancho - 12, y + 6, nombre, color_estado)
+        self._dibujar_pildora_estado(x + ancho - 12, y + 7, nombre, color_estado)
 
         # Fila 2: barra de carga (sólido = recogido, tenue = reservado para el viaje).
         capacidad = self.sesion.capacidades.get(picker["id"], 0)
@@ -254,21 +254,22 @@ class PanelLateral:
         trabajo = picker.get("trabajo")
         reservado = trabajo["peso"] if trabajo else 0.0
         etiqueta = f"Carga {carga:.1f} / {capacidad:g} kg"
-        ancho_etiqueta = p.texto(etiqueta, f.chico, cfg.TEXTO_SUAVE,
-                                 x + ancho - 14, y + 34, "der")
-        barra = pygame.Rect(x + 18, y + 38, ancho - 18 - 14 - ancho_etiqueta - 10, 8)
-        pygame.draw.rect(self.pantalla, cfg.PISTA_PROGRESO, barra, border_radius=4)
+        ancho_etiqueta = p.texto(etiqueta, f.normal, (255, 255, 255),
+                                 x + ancho - 14, y + 32, "der")
+        barra = pygame.Rect(x + 18, y + 36, ancho - 18 - 14 - ancho_etiqueta - 12, 12)
+        pygame.draw.rect(self.pantalla, cfg.PISTA_PROGRESO, barra, border_radius=6)
         if capacidad > 0:
             px_reservado = int(barra.w * min(1.0, reservado / capacidad))
             px_carga = int(barra.w * min(1.0, carga / capacidad))
-            if px_reservado >= 2:
+            if px_reservado >= 3:
                 p.rect_alfa(barra.x, barra.y, px_reservado, barra.h,
-                            (color[0], color[1], color[2], 90), 4)
-            if px_carga >= 2:
+                            (color[0], color[1], color[2], 120), 6)
+            if px_carga >= 3:
                 pygame.draw.rect(self.pantalla, color,
-                                 (barra.x, barra.y, px_carga, barra.h), border_radius=4)
+                                 (barra.x, barra.y, px_carga, barra.h), border_radius=6)
+        pygame.draw.rect(self.pantalla, (120, 130, 150), barra, 1, border_radius=6)
 
-        # Fila 3: contadores con el número resaltado.
+        # Fila 3: contadores, con el número apenas resaltado.
         contadores = (
             ("pend.", len(picker["pendientes"])),
             ("recogidos", len(picker["recogidos"])),
@@ -277,10 +278,10 @@ class PanelLateral:
         )
         cx = x + 18
         for etiqueta_contador, valor in contadores:
-            ancho_valor = p.texto(str(valor), f.negrita, cfg.BLANCO_SUAVE, cx, y + 51)
+            ancho_valor = p.texto(str(valor), f.normal, cfg.BLANCO_SUAVE, cx, y + 54)
             ancho_texto = p.texto(etiqueta_contador, f.chico, cfg.TEXTO_SUAVE,
-                                  cx + ancho_valor + 4, y + 54)
-            cx += ancho_valor + ancho_texto + 18
+                                  cx + ancho_valor + 4, y + 57)
+            cx += ancho_valor + ancho_texto + 16
 
 
 class PanelWaves:

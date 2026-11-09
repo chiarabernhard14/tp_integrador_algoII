@@ -46,10 +46,7 @@ class Sesion:
         self.estrategia_recorrido = sim.estrategia
         self.capacidades = {}
         for picker in self.sim.pickers:
-            # Lee capacidad desde EstadoPicker o directamente desde la entidad Picker
-            self.capacidades[picker.id] = getattr(
-                picker, "capacidad", getattr(picker.entidad, "capacidad_carga_kg", 0)
-            )
+            self.capacidades[picker.id] = picker.capacidad
         self._reiniciar_estado()
 
     def _reiniciar_estado(self):

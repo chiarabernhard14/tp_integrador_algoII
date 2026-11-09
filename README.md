@@ -123,7 +123,7 @@ proyeto_integrador/
 
 Módulos relevantes:
 
-- `domain/WarehouseE.py`: modelo del almacén y reglas de colocación.
+- `domain/Warehouse.py`: modelo del almacén y reglas de colocación.
 - `simulation/Scenario.py`: generación y validación de escenarios.
 - `simulation/Recorridos.py`, `Navegation.py` y `PlanificadorViajes.py`: búsqueda de caminos y planificación de viajes.
 - `simulation/AsignadorPickers.py`: asignación de viajes y control de peso de pickers y despachos.

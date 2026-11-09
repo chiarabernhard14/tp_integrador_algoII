@@ -1,5 +1,5 @@
 from .RectangularElement import RectangularElement
-from .ProductE import Product
+from .Product import Product
 
 
 class Rack(RectangularElement):

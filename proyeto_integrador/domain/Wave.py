@@ -1,6 +1,6 @@
 class Wave:
 
-    def __init__(self, id="", orders=None, max_orders_capacity=0, max_products_capacity=0, locations_to_visit=None, route=None, status="CREADA",products=None):
+    def __init__(self, id="", orders=None, max_orders_capacity=1, max_products_capacity=1, locations_to_visit=None, route=None, status="CREADA",products=None):
         self.id = id
         self.orders = list(orders) if orders is not None else []
         self.max_orders_capacity = max_orders_capacity
@@ -80,8 +80,8 @@ class Wave:
     def _validar_capacidad(value, nombre):
         if not isinstance(value, int) or isinstance(value, bool):
             raise TypeError(f"{nombre} debe ser un entero.")
-        if value < 0:
-            raise ValueError(f"{nombre} no puede ser negativo.")
+        if value < 1:
+            raise ValueError(f"{nombre} debe ser mayor que cero.")
 
     @property
     def locations_to_visit(self):
@@ -122,7 +122,7 @@ class Wave:
             raise ValueError("No se puede agregar un pedido nulo.")
         if any(o.id == order.id for o in self.orders):
             return
-        if self.max_orders_capacity > 0 and len(self.orders) >= self.max_orders_capacity:
+        if len(self.orders) >= self.max_orders_capacity:
             raise ValueError("Capacidad máxima de pedidos alcanzada.")
         self.orders.append(order)
 
@@ -131,18 +131,11 @@ class Wave:
         self._validar_registro_producto(registro)
 
         ya_incluido = any(o.id == order.id for o in self.orders)
-        if (
-            not ya_incluido
-            and self.max_orders_capacity > 0
-            and len(self.orders) >= self.max_orders_capacity
-        ):
+        if not ya_incluido and len(self.orders) >= self.max_orders_capacity:
             raise ValueError("Capacidad máxima de pedidos alcanzada.")
 
         unidades_actuales = sum(item["quantity"] for item in self.products)
-        if (
-            self.max_products_capacity > 0
-            and unidades_actuales + quantity > self.max_products_capacity
-        ):
+        if unidades_actuales + quantity > self.max_products_capacity:
             raise ValueError("Capacidad máxima de unidades alcanzada.")
 
         # Validar todo antes de modificar el objeto.

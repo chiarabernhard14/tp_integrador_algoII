@@ -11,6 +11,7 @@ from .CapaMapa import CapaMapa
 from .Grilla import Grilla
 from .Sprites import FabricaSprites
 from .SpritesProducto import FabricaProductos
+from .Widgets import icono_cerrar, pos_mouse
 
 HERRAMIENTAS = {
     pygame.K_1: "rack", pygame.K_2: "despacho", pygame.K_3: "puerta",
@@ -47,28 +48,58 @@ def _elementos(lista):
     return resultado
 
 
-class CuadroProducto:
+class CuadroModal:
+    """Base compartida para los cuadros modales del editor."""
+
+    def __init__(self, fuentes, ancho, alto):
+        self.fuente = fuentes.normal
+        self.fuente_fuerte = fuentes.negrita
+        self.rect = pygame.Rect(0, 0, ancho, alto)
+        self.rect.center = (cfg.AREA_X + cfg.AREA_W // 2,
+                            cfg.AREA_Y + cfg.AREA_H // 2)
+        self.rect_cerrar = pygame.Rect(
+            self.rect.right - 16 - 26, self.rect.y + 14, 26, 26
+        )
+
+    def _dibujar_marco(self, pantalla):
+        pygame.draw.rect(pantalla, (26, 30, 40), self.rect, border_radius=12)
+        pygame.draw.rect(pantalla, cfg.ACENTO, self.rect, 2, border_radius=12)
+
+    def _dibujar_cerrar(self, pantalla):
+        icono = icono_cerrar(
+            self.rect_cerrar.w, self.rect_cerrar.collidepoint(pos_mouse())
+        )
+        pantalla.blit(icono, self.rect_cerrar)
+
+    def _dibujar_boton(self, pantalla, rect, texto, relleno, borde):
+        if rect.collidepoint(pos_mouse()):
+            relleno = tuple(min(255, v + 25) for v in relleno)
+        pygame.draw.rect(pantalla, relleno, rect, border_radius=10)
+        pygame.draw.rect(pantalla, borde, rect, 2, border_radius=10)
+        img = self.fuente_fuerte.render(texto, True, (255, 255, 255))
+        pantalla.blit(img, img.get_rect(center=rect.center))
+
+
+class CuadroProducto(CuadroModal):
     """Mini cuadro modal para pedir z, stock y peso."""
 
     ETIQUETAS = ("Altura z", "Stock", "Peso (kg)")
 
     def __init__(self, fuentes, celda, z_inicial):
-        self.fuente = fuentes.normal
+        super().__init__(fuentes, 360, 252)
         self.celda = celda
         self.valores = [str(z_inicial), "20", "1.0"]
         self.activo = 0
-        self.rect = pygame.Rect(0, 0, 330, 226)
-        # Centrado sobre el área del mapa, no sobre toda la pantalla.
-        self.rect.center = (cfg.AREA_X + cfg.AREA_W // 2,
-                            cfg.AREA_Y + cfg.AREA_H // 2)
         r = self.rect
-        self.cajas = [pygame.Rect(r.x + 150, r.y + 46 + i * 34, 160, 28) for i in range(3)]
-        self.boton_ok = pygame.Rect(r.x + 16, r.y + 172, 140, 36)
-        self.boton_cancelar = pygame.Rect(r.x + 174, r.y + 172, 140, 36)
+        self.cajas = [pygame.Rect(r.x + 160, r.y + 58 + i * 44, 184, 34) for i in range(3)]
+        self.boton_ok = pygame.Rect(r.x + 20, r.y + 198, 150, 40)
+        self.boton_cancelar = pygame.Rect(r.right - 20 - 150, r.y + 198, 150, 40)
 
     def evento(self, ev):
         """Devuelve "ok", "cancelar" o None."""
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if self.rect_cerrar.collidepoint(ev.pos):
+                return "cancelar"
             if self.boton_ok.collidepoint(ev.pos):
                 return "ok"
             if self.boton_cancelar.collidepoint(ev.pos):
@@ -97,45 +128,53 @@ class CuadroProducto:
 
     def dibujar(self, pantalla):
         rect = self.rect
-        pygame.draw.rect(pantalla, (30, 34, 44), rect, border_radius=12)
-        pygame.draw.rect(pantalla, cfg.ACENTO, rect, 2, border_radius=12)
+        self._dibujar_marco(pantalla)
+
         titulo = f"Producto en celda ({self.celda[0]}, {self.celda[1]})"
-        pantalla.blit(self.fuente.render(titulo, True, (255, 255, 255)), (rect.x + 16, rect.y + 12))
+        img = self.fuente_fuerte.render(titulo, True, (255, 255, 255))
+        pantalla.blit(img, (rect.x + 20, self.rect_cerrar.centery - img.get_height() // 2))
+        self._dibujar_cerrar(pantalla)
+        pygame.draw.line(pantalla, (76, 84, 104), (rect.x + 16, rect.y + 50),
+                         (rect.right - 16, rect.y + 50), 1)
+
         for i, caja in enumerate(self.cajas):
-            color = cfg.ACENTO if i == self.activo else (110, 120, 140)
-            pantalla.blit(self.fuente.render(self.ETIQUETAS[i], True, cfg.TEXTO), (rect.x + 16, caja.y + 4))
-            pygame.draw.rect(pantalla, color, caja, 2, border_radius=6)
-            pantalla.blit(self.fuente.render(self.valores[i], True, (255, 255, 255)),
-                          (caja.x + 8, caja.y + 4))
-        for boton, texto, relleno in ((self.boton_ok, "Aceptar", (22, 163, 74)),
-                                      (self.boton_cancelar, "Cancelar", (75, 82, 99))):
-            pygame.draw.rect(pantalla, relleno, boton, border_radius=10)
-            pygame.draw.rect(pantalla, (160, 170, 190), boton, 2, border_radius=10)
-            img = self.fuente.render(texto, True, (255, 255, 255))
-            pantalla.blit(img, img.get_rect(center=boton.center))
+            activa = i == self.activo
+            etiqueta = self.fuente.render(self.ETIQUETAS[i], True, (240, 244, 252))
+            pantalla.blit(etiqueta, (rect.x + 20, caja.centery - etiqueta.get_height() // 2))
+            pygame.draw.rect(pantalla, (16, 20, 28), caja, border_radius=8)
+            pygame.draw.rect(pantalla, cfg.ACENTO if activa else (150, 162, 186), caja,
+                             2, border_radius=8)
+            texto = self.valores[i]
+            if activa and (pygame.time.get_ticks() // 500) % 2 == 0:
+                texto += "|"
+            valor = self.fuente_fuerte.render(texto, True, (255, 255, 255))
+            pantalla.blit(valor, (caja.x + 12, caja.centery - valor.get_height() // 2))
+
+        self._dibujar_boton(pantalla, self.boton_ok, "Aceptar", (22, 163, 74), (120, 230, 160))
+        self._dibujar_boton(pantalla, self.boton_cancelar, "Cancelar", (75, 82, 99), (160, 170, 190))
 
 
-class CuadroPesoZona:
-    """Campo modal para definir el límite de peso de una zona manual."""
+class CuadroPesoZona(CuadroModal):
+    """Cuadro modal para definir el peso máximo de una zona de despacho."""
 
-    def __init__(self, fuentes, zona_id, peso_inicial):
-        self.fuente = fuentes.normal
+    def __init__(self, fuentes, zona_id, peso_inicial=500.0):
+        super().__init__(fuentes, 380, 210)
         self.zona_id = zona_id
         self.valor = f"{peso_inicial:g}"
-        self.rect = pygame.Rect(0, 0, 360, 190)
-        self.rect.center = (cfg.AREA_X + cfg.AREA_W // 2,
-                            cfg.AREA_Y + cfg.AREA_H // 2)
+        self.activo = True
         r = self.rect
-        self.caja = pygame.Rect(r.x + 152, r.y + 72, 188, 34)
-        self.boton_ok = pygame.Rect(r.x + 20, r.y + 132, 150, 38)
-        self.boton_cancelar = pygame.Rect(r.x + 190, r.y + 132, 150, 38)
+        self.caja = pygame.Rect(r.x + 154, r.y + 82, 202, 38)
+        self.boton_ok = pygame.Rect(r.x + 20, r.y + 150, 164, 40)
+        self.boton_cancelar = pygame.Rect(r.right - 20 - 164, r.y + 150, 164, 40)
 
     def evento(self, ev):
+        """Devuelve "ok", "cancelar" o None."""
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if self.rect_cerrar.collidepoint(ev.pos) or self.boton_cancelar.collidepoint(ev.pos):
+                return "cancelar"
             if self.boton_ok.collidepoint(ev.pos):
                 return "ok"
-            if self.boton_cancelar.collidepoint(ev.pos):
-                return "cancelar"
+            self.activo = self.caja.collidepoint(ev.pos)
             return None
         if ev.type != pygame.KEYDOWN:
             return None
@@ -149,29 +188,25 @@ class CuadroPesoZona:
             self.valor += ev.unicode
         return None
 
-    def numeros(self):
+    def numero(self):
         return float(self.valor.replace(",", "."))
 
     def dibujar(self, pantalla):
         r = self.rect
-        pygame.draw.rect(pantalla, (30, 34, 44), r, border_radius=12)
-        pygame.draw.rect(pantalla, cfg.ACENTO, r, 2, border_radius=12)
-        titulo = f"Capacidad de despacho {self.zona_id}"
-        pantalla.blit(self.fuente.render(titulo, True, (255, 255, 255)),
-                      (r.x + 20, r.y + 20))
-        etiqueta = self.fuente.render("Peso máximo (kg)", True, cfg.TEXTO)
-        pantalla.blit(etiqueta, (r.x + 20, self.caja.y + 6))
-        pygame.draw.rect(pantalla, cfg.ACENTO, self.caja, 2, border_radius=6)
-        valor = self.fuente.render(self.valor, True, (255, 255, 255))
-        pantalla.blit(valor, (self.caja.x + 10, self.caja.y + 6))
-        for boton, texto, color in (
-            (self.boton_ok, "Guardar", (22, 163, 74)),
-            (self.boton_cancelar, "Dejar 500 kg", (75, 82, 99)),
-        ):
-            pygame.draw.rect(pantalla, color, boton, border_radius=9)
-            pygame.draw.rect(pantalla, (160, 170, 190), boton, 1, border_radius=9)
-            imagen = self.fuente.render(texto, True, (255, 255, 255))
-            pantalla.blit(imagen, imagen.get_rect(center=boton.center))
+        self._dibujar_marco(pantalla)
+        titulo = self.fuente_fuerte.render("Capacidad de zona de despacho", True, (255, 255, 255))
+        pantalla.blit(titulo, (r.x + 20, r.y + 24))
+        self._dibujar_cerrar(pantalla)
+        etiqueta = self.fuente.render("Peso máximo (kg)", True, (240, 244, 252))
+        pantalla.blit(etiqueta, (r.x + 20, self.caja.centery - etiqueta.get_height() // 2))
+        pygame.draw.rect(pantalla, (16, 20, 28), self.caja, border_radius=8)
+        pygame.draw.rect(pantalla, cfg.ACENTO if self.activo else (150, 162, 186),
+                         self.caja, 2, border_radius=8)
+        texto = self.valor + ("|" if self.activo and (pygame.time.get_ticks() // 500) % 2 == 0 else "")
+        valor = self.fuente_fuerte.render(texto, True, (255, 255, 255))
+        pantalla.blit(valor, (self.caja.x + 12, self.caja.centery - valor.get_height() // 2))
+        self._dibujar_boton(pantalla, self.boton_ok, "Guardar", (22, 163, 74), (120, 230, 160))
+        self._dibujar_boton(pantalla, self.boton_cancelar, "Dejar 500 kg", (75, 82, 99), (160, 170, 190))
 
 
 class EditorEscenario:
@@ -332,14 +367,13 @@ class EditorEscenario:
             self.cuadro = None
         elif resultado == "ok":
             if isinstance(self.cuadro, CuadroPesoZona):
+                cuadro = self.cuadro
                 try:
-                    peso = self.cuadro.numeros()
+                    peso = cuadro.numero()
                 except ValueError:
-                    self.mensaje = "Ingresá un peso numérico mayor a 0 kg"
+                    self.mensaje = "Ingresá un peso máximo válido en kg"
                     return
-                self.mensaje = self.modelo.establecer_peso_zona(
-                    self.cuadro.zona_id, peso
-                )
+                self.mensaje = self.modelo.establecer_peso_zona(cuadro.zona_id, peso)
                 self._marcar_cambio()
                 if not self.mensaje:
                     self.cuadro = None
@@ -357,15 +391,12 @@ class EditorEscenario:
 
     def _soltar(self):
         x, y, w, h = self._rect_arrastre()
-        zonas_antes = len(self.modelo.zonas)
+        cantidad_zonas = len(self.modelo.zonas)
         self.mensaje = self.modelo.agregar(self.herramienta, x, y, w, h, self.sentido)
-        self._marcar_cambio()
-        if (not self.mensaje and self.herramienta == "despacho"
-                and len(self.modelo.zonas) > zonas_antes):
+        if not self.mensaje and self.herramienta == "despacho" and len(self.modelo.zonas) > cantidad_zonas:
             zona = self.modelo.zonas[-1]
-            self.cuadro = CuadroPesoZona(
-                self.fuentes, zona["id"], zona.get("peso_max_kg", 500.0)
-            )
+            self.cuadro = CuadroPesoZona(self.fuentes, zona["id"], zona.get("peso_max_kg", 500.0))
+        self._marcar_cambio()
         self.inicio = None
 
     def _soltar_picker(self):
@@ -419,8 +450,13 @@ class EditorEscenario:
 
     def _almacen_visual(self):
         m = self.modelo
+        zonas = []
+        for zona in m.zonas:
+            zona_visual = dict(zona)
+            zona_visual["puerta_id"] = m.puerta_de_zona(zona)
+            zonas.append(zona_visual)
         return SimpleNamespace(racks=_elementos(m.racks), pasillos=_elementos(m.pasillos),
-                               zonas_despacho=_elementos(m.zonas), puertas=_elementos(m.puertas))
+                               zonas_despacho=_elementos(zonas), puertas=_elementos(m.puertas))
 
     def _actualizar_capa(self):
         """La capa del mapa se vuelve a armar solo cuando el modelo cambió."""

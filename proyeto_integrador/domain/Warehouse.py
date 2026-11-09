@@ -2,13 +2,13 @@ from collections import deque
 
 from domain.ProductoInaccesible import ProductoInaccesible
 from domain.Validation import validate_positive_int
-from .DoorE import Door
-from .DispatchZoneE import DispatchZone
-from .RackE import Rack
-from .AisleE import Aisle
-from .PickerE import Picker
-from .ProductE import Product
-from .OrderE import Order
+from .Door import Door
+from .DispatchZone import DispatchZone
+from .Rack import Rack
+from .Aisle import Aisle
+from .Picker import Picker
+from .Product import Product
+from .Order import Order
 from .Vertice import Vertice
 
 
@@ -274,7 +274,7 @@ class Warehouse:
         if picker.id in self._pickers:
             raise ValueError("Ya existe un picker con el mismo id.")
         self.validate_inside_warehouse(picker.posicion)
-        
+
         self._pickers[picker.id] = picker
 
     # Productos
@@ -1198,4 +1198,4 @@ class Warehouse:
         
         self.graph[origen].insert(0, (destino, distancia))
 
-  
+

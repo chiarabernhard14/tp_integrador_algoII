@@ -22,6 +22,33 @@ def pos_mouse():
     return _MOUSE_POS_LOGICA
 
 
+_CACHE_CERRAR = {}
+
+
+def icono_cerrar(lado, sobre):
+    """Círculo rojo con una cruz blanca exactamente centrada (para cerrar carteles y diálogos).
+
+    Se dibuja a 4x y se reduce con suavizado, así queda simétrico y sin dientes.
+    """
+    clave = (lado, sobre)
+    icono = _CACHE_CERRAR.get(clave)
+    if icono is None:
+        k = 4
+        n = lado * k
+        c = n // 2
+        grande = pygame.Surface((n, n), pygame.SRCALPHA)
+        fondo = (150, 42, 54) if sobre else (86, 30, 38)
+        pygame.draw.circle(grande, fondo, (c, c), c - 1)
+        pygame.draw.circle(grande, cfg.ROJO, (c, c), c - 1, 2 * k)
+        d = int(n * 0.2)
+        grosor = int(k * 2.4)
+        pygame.draw.line(grande, (255, 255, 255), (c - d, c - d), (c + d, c + d), grosor)
+        pygame.draw.line(grande, (255, 255, 255), (c + d, c - d), (c - d, c + d), grosor)
+        icono = pygame.transform.smoothscale(grande, (lado, lado))
+        _CACHE_CERRAR[clave] = icono
+    return icono
+
+
 class Boton:
 
     def __init__(self, nombre, texto, x, y, ancho, alto, color=None):
@@ -35,13 +62,13 @@ class Alerta:
     """Cartel que aparece arriba y se cierra solo (o con un clic o su X)."""
 
     MARGEN_SUP = 16
-    MARGEN_INF = 20
+    MARGEN_INF = 30
     MARGEN_IZQ = 22
-    MARGEN_DER = 16
+    MARGEN_DER = 22
     ICONO = 36
     HUECO_ICONO = 14
-    ALTO_CERRAR = 22
-    HUECO_CERRAR = 14
+    ALTO_CERRAR = 26
+    HUECO_CERRAR = 24
     RADIO = 14
     GROSOR_FRANJA = 6
     FONDO = (30, 34, 44)
@@ -193,22 +220,20 @@ class Alerta:
         proporcion = max(0.0, min(1.0, self.restante / cfg.DURACION_ALERTA))
         x = r.x + self.x_texto
         ancho = r.right - self.MARGEN_DER - x
-        y = r.bottom - 10
+        y = r.bottom - 14
         pygame.draw.rect(pantalla, (46, 52, 66), (x, y, ancho, 3), border_radius=1)
         if proporcion > 0:
             pygame.draw.rect(pantalla, self.acento,
                              (x, y, int(ancho * proporcion), 3), border_radius=1)
 
+    def _icono_cerrar(self, sobre):
+        return icono_cerrar(self.ALTO_CERRAR, sobre)
+
     def _dibujar_cerrar(self, pantalla):
-        """Botón X centrado en la fila del título."""
+        """Botón de cerrar centrado en la fila del título."""
         sobre = self.rect_cerrar.collidepoint(_MOUSE_POS_LOGICA)
-        fondo = (74, 82, 100) if sobre else (48, 54, 68)
-        color_x = (255, 255, 255) if sobre else (190, 198, 214)
-        cx, cy = self.rect_cerrar.center
-        pygame.draw.circle(pantalla, fondo, (cx, cy), self.ALTO_CERRAR // 2)
-        d = 4
-        pygame.draw.line(pantalla, color_x, (cx - d, cy - d), (cx + d, cy + d), 2)
-        pygame.draw.line(pantalla, color_x, (cx + d, cy - d), (cx - d, cy + d), 2)
+        icono = self._icono_cerrar(sobre)
+        pantalla.blit(icono, icono.get_rect(center=self.rect_cerrar.center))
 
 
 # =====================================================================
@@ -431,13 +456,6 @@ class ToolButton:
         img_texto = fuente.render(self.nombre, True, texto_color)
         pantalla.blit(img_texto, img_texto.get_rect(center=self.rect.center))
 
-        # Línea de acento abajo en la herramienta activa.
-        if self.activo:
-            y = self.rect.bottom - 5
-            pygame.draw.line(pantalla, (255, 255, 255),
-                             (self.rect.centerx - 10, y),
-                             (self.rect.centerx + 10, y), 2)
-
     def clic(self, pos):
         return self.rect.collidepoint(pos)
 
@@ -445,9 +463,10 @@ class ToolButton:
 class StatusBar:
     """Barra de estado del editor: herramienta, coordenada, tamaño del mapa."""
 
-    def __init__(self, rect, fuente):
+    def __init__(self, rect, fuente, fuente_negrita=None):
         self.rect = pygame.Rect(rect)
         self.fuente = fuente
+        self.fuente_negrita = fuente_negrita or fuente
         self.herramienta = "rack"
         self.coordenada = "(0, 0)"
         self.tamano = "8 × 8"
@@ -458,12 +477,26 @@ class StatusBar:
         self.tamano = tamano
 
     def dibujar(self, pantalla):
-        pygame.draw.rect(pantalla, cfg.TARJETA_FONDO_OSCURO, self.rect, border_radius=cfg.RADIO_M)
-        pygame.draw.rect(pantalla, cfg.TARJETA_BORDE, self.rect, 1, border_radius=cfg.RADIO_M)
+        """Herramienta activa, celda bajo el mouse y tamaño del mapa, con alto contraste."""
+        pygame.draw.rect(pantalla, (24, 28, 36), self.rect, border_radius=cfg.RADIO_M)
+        pygame.draw.rect(pantalla, (120, 132, 156), self.rect, 2, border_radius=cfg.RADIO_M)
+        pygame.draw.rect(pantalla, cfg.ACENTO,
+                         (self.rect.x + 1, self.rect.y + 10, 4, self.rect.h - 20),
+                         border_radius=2)
 
-        texto = f"{self.herramienta}   ·   {self.coordenada}   ·   {self.tamano} celdas"
-        img = self.fuente.render(texto, True, cfg.TEXTO_PRINCIPAL)
-        pantalla.blit(img, (self.rect.x + 12, self.rect.centery - img.get_height() // 2))
+        partes = (
+            ("Herramienta", self.fuente_negrita, (214, 222, 236)),
+            (self.herramienta.capitalize(), self.fuente_negrita, (140, 188, 255)),
+            ("·", self.fuente_negrita, (150, 160, 180)),
+            (f"Celda {self.coordenada}", self.fuente_negrita, (255, 255, 255)),
+            ("·", self.fuente_negrita, (150, 160, 180)),
+            (f"{self.tamano} celdas", self.fuente_negrita, (255, 255, 255)),
+        )
+        x = self.rect.x + 20
+        for texto, fuente, color in partes:
+            img = fuente.render(texto, True, color)
+            pantalla.blit(img, (x, self.rect.centery - img.get_height() // 2))
+            x += img.get_width() + 10
 
 
 class ListaPickersScroll:
@@ -554,7 +587,7 @@ class ListaPickersScroll:
             pygame.draw.circle(pantalla, color, (cx, cy), 5)
 
             # Nombre, centrado verticalmente en la fila
-            img = self.fuente.render(str(picker["id"]), True, cfg.TEXTO_PRINCIPAL)
+            img = self.fuente.render(str(picker["id"]), True, (255, 255, 255))
             pantalla.blit(img, img.get_rect(midleft=(cx + 16, cy)))
 
             # Botón eliminar: discreto, se pone rojo al pasar el mouse
