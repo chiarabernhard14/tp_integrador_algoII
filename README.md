@@ -132,24 +132,5 @@ Módulos relevantes:
 - `visualization/Main.py`: punto de entrada de la aplicación.
 - `visualization/GeneradorPantalla.py` y `EditorEsc.py`: generación automática y edición manual de mapas.
 
-## Medición de carga
 
-Desde la raíz del repositorio podés ejecutar los casos pequeños del script de medición:
-
-```powershell
-python .\proyeto_integrador\MedirCargaEscenarioGrande.py small
-python .\proyeto_integrador\MedirCargaEscenarioGrande.py small-greedy
-```
-
-Para medir un escenario JSON propio:
-
-```powershell
-python .\proyeto_integrador\MedirCargaEscenarioGrande.py "$env:USERPROFILE\Downloads\mi_escenario.json"
-```
-
-El modo `heavy-repeat` ejecuta tres mediciones del mismo escenario. El modo `all` compara casos chicos y uno pesado:
-
-```powershell
-python .\proyeto_integrador\MedirCargaEscenarioGrande.py heavy-repeat "$env:USERPROFILE\Downloads\mi_escenario.json"
-python .\proyeto_integrador\MedirCargaEscenarioGrande.py all "$env:USERPROFILE\Downloads\mi_escenario.json"
 ```
