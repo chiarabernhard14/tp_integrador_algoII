@@ -268,6 +268,10 @@ class App:
 
     def _evento_generador(self, ev):
         accion = self.generador.evento(ev)
+        mensaje = self.generador.editor.alerta_pendiente
+        if mensaje:
+            self.alerta.mostrar("Aviso", mensaje)
+            self.generador.editor.alerta_pendiente = ""
         if accion == "generar":
             self._click("aplicar_generacion")
         elif accion == "validar":

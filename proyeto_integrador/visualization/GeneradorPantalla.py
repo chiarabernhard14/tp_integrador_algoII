@@ -30,8 +30,8 @@ PARAMETROS = (
     ("productos", "Productos", 1, 400, 20, 1, 0),
     ("pedidos", "Pedidos", 1, 120, 8, 1, 1),
     ("max_productos_pedido", "Máx. productos por pedido", 1, 12, 4, 1, 2),
-    ("max_orders_capacity", "Pedidos por wave", 0, 30, 3, 1, 3),
-    ("max_products_capacity", "Productos por wave", 0, 80, 15, 1, 4),
+    ("max_orders_capacity", "Pedidos por wave", 1, 30, 3, 1, 3),
+    ("max_products_capacity", "Productos por wave", 1, 80, 15, 1, 4),
 )
 LIMITES = {clave: (minimo, maximo) for clave, _e, minimo, maximo, _i, _c, _f in PARAMETROS}
 MODOS = (("aleatoria", "Aleatoria"), ("agrupada", "Agrupada"), ("cerca_despacho", "Cerca del despacho"))
@@ -355,8 +355,8 @@ class PantallaGenerador:
 
     def _waves_minimas(self):
         por_wave = self.valores["max_orders_capacity"]
-        if por_wave == 0:
-            return 1
+        if por_wave <= 0:
+            return 0
         return math.ceil(self.valores["pedidos"] / por_wave)
 
     def _puede_generar(self):
@@ -772,6 +772,9 @@ class PantallaGenerador:
         pickers = self.valores["pickers"]
         pedidos = self.valores["pedidos"]
         por_wave = self.valores["max_orders_capacity"]
+        capacidad_wave_valida = (
+            por_wave > 0 and self.valores["max_products_capacity"] > 0
+        )
         entran = productos <= capacidad
         uso = round(100 * productos / capacidad) if capacidad else 100
 
@@ -780,17 +783,28 @@ class PantallaGenerador:
         self._dibujar_tile(1, "PRODUCTOS A UBICAR", str(productos),
                            cfg.VERDE if entran else cfg.ROJO,
                            f"{uso} % de ocupación" if entran else "No entran en esos estantes")
-        self._dibujar_tile(2, "WAVES COMO MÍNIMO", str(waves), cfg.AMARILLO,
-                           f"{pedidos} pedidos · "
-                           + ("sin límite por wave" if por_wave == 0 else f"{por_wave} por wave"))
+        detalle_waves = (
+            f"{pedidos} pedidos · {por_wave} por wave"
+            if capacidad_wave_valida
+            else "Las capacidades deben ser mayores a 0"
+        )
+        self._dibujar_tile(2, "WAVES COMO MÍNIMO",
+                           str(waves) if capacidad_wave_valida else "—",
+                           cfg.AMARILLO if capacidad_wave_valida else cfg.ROJO,
+                           detalle_waves)
         self._dibujar_tile(3, "PICKERS", str(pickers), cfg.NARANJA,
-                           "Pueden colaborar en una misma wave" if pickers > waves
+                           "Corregí la capacidad de wave" if not capacidad_wave_valida
+                           else "Pueden colaborar en una misma wave" if pickers > waves
                            else f"{waves} waves para repartir")
 
         estado = pygame.Rect(x0, 306, ancho, 40)
-        color = cfg.VERDE if entran else cfg.ROJO
-        texto = ("Todo listo: podés generar el escenario." if entran
-                 else "No se puede generar: subí estantes o alto, o bajá los productos.")
+        color = cfg.VERDE if entran and capacidad_wave_valida else cfg.ROJO
+        if not capacidad_wave_valida:
+            texto = "Las capacidades de wave tienen que ser mayores a 0."
+        elif entran:
+            texto = "Todo listo: podés generar el escenario."
+        else:
+            texto = "No se puede generar: subí estantes o alto, o bajá los productos."
         self.pincel.rect_alfa(estado.x, estado.y, estado.w, estado.h, (*color, 40), cfg.RADIO_M)
         pygame.draw.rect(self.pantalla, color, estado, 1, border_radius=cfg.RADIO_M)
         self.pincel.texto(texto, f.negrita, (255, 255, 255), estado.x + 20,
