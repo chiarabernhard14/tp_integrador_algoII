@@ -153,13 +153,6 @@ class Simulacion:
         pedidos = list(self.warehouse.pedidos.values())
         max_pedidos = configuracion.get("wave_max_pedidos", 3)
         max_unidades = configuracion.get("wave_max_productos", 15)
-        if max_pedidos == 0:
-            max_pedidos = max(1, len(pedidos))
-        if max_unidades == 0:
-            max_unidades = max(
-                1,
-                sum(item.cantidad for pedido in pedidos for item in pedido.items),
-            )
         return generar_waves(
             pedidos, max_pedidos, max_unidades,
         )

@@ -3,6 +3,7 @@ import random
 import re
 
 from domain.ProductoInaccesible import ProductoInaccesible
+from domain.Validation import validate_positive_int
 
 from .Navegation import Navegacion
 from .Cargador import cargar_warehouse
@@ -134,8 +135,8 @@ def _validar_parametros(estantes, pasillos_h, productos, pedidos, max_prod, pick
         raise ValueError("Productos, pedidos, items por pedido y pickers deben ser >= 1.")
     if alto < 2:
         raise ValueError("El alto del rack debe ser >= 2.")
-    if max_orders < 0 or max_products < 0:
-        raise ValueError("La capacidad de las waves no puede ser negativa (0 = sin limite).")
+    validate_positive_int(max_orders, "Pedidos máximos por wave")
+    validate_positive_int(max_products, "Unidades máximas por wave")
     _validar_peso_zona(peso_max_zona_kg)
     if modo not in MODOS_UBICACION:
         raise ValueError(f"Modo de ubicacion invalido: {modo}.")
@@ -355,6 +356,16 @@ def validar_escenario(datos):
     datos["productos_inaccesibles"] para que la capa superior muestre el
     cartel y los excluya de los viajes, pero el escenario sigue ejecutándose.
     """
+    configuracion = datos.get("configuracion", {}) if isinstance(datos, dict) else {}
+    if not isinstance(configuracion, dict):
+        raise ValueError("La configuración del escenario debe ser un objeto.")
+    validate_positive_int(
+        configuracion.get("wave_max_pedidos", 3), "Pedidos máximos por wave"
+    )
+    validate_positive_int(
+        configuracion.get("wave_max_productos", 15), "Unidades máximas por wave"
+    )
+
     try:
         warehouse = cargar_warehouse(datos)
     except (KeyError, TypeError) as error:
