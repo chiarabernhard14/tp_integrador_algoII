@@ -53,7 +53,6 @@ class Warehouse:
         self._dispatch_zone_cell = set() #No usar para la parte de visualización
         self._puntos_acc=set()
         self._acceso_cargados = set()
-        self._pasillos_bloqueados = set()
         self._next_auto_aisle_id = 0
 
 #region
@@ -456,10 +455,7 @@ class Warehouse:
     def _particion_voraz_mixta(self, grid, W, H):
         """Elige el rectángulo de mayor área desde la primera celda libre.
 
-        Modifica grid marcando las celdas usadas. Si se proporciona on_step,
-        lo llama con un evento cada vez que evalúa un candidato, cuando elige
-        el mejor y después de ocuparlo, para visualizar la ejecución sin
-        duplicar el algoritmo.
+        Modifica grid marcando las celdas usadas. 
         """
         rects = []
 
@@ -782,8 +778,6 @@ class Warehouse:
     def bloquear_pasillos_sin_salida(self):
         """Quita sectores atrapados, analizándolos sobre el grafo reducido."""
         celdas_eliminadas = set()
-        pasillos_completos_bloqueados = set(self._pasillos_bloqueados)
-
         # Mapa celda -> pasillo propietario sobre todas las celdas activas.
         # Se mantiene quitando las celdas a medida que se eliminan.
         propietario_por_celda = {
@@ -1037,10 +1031,258 @@ class Warehouse:
                 if (not set(pasillo.cells()) - celdas_eliminadas
                         and not pasillo.blocked):
                     pasillo.blocked = True
-                    pasillos_completos_bloqueados.add(pasillo.id)
 
-        self._pasillos_bloqueados = pasillos_completos_bloqueados
-        return sorted(celdas_eliminadas)
+
+
+
+        """Quita sectores atrapados, analizándolos sobre el grafo reducido."""
+        celdas_eliminadas = set()
+
+        # Mapa celda -> pasillo propietario sobre todas las celdas activas.
+        # Se mantiene quitando las celdas a medida que se eliminan.
+        propietario_por_celda = {
+            vertice.ubicacion: vertice.pasillo for vertice in self.celdas
+        }
+
+        while True:
+            # Nodos activos del grafo reducido con su pasillo dueño.
+            propietario_por_nodo = {
+                nodo: pasillo
+                for nodo, pasillo in propietario_por_celda.items()
+                if nodo in self.reduced_graph
+            }
+            nodos_por_pasillo = {}
+            for nodo, pasillo in propietario_por_nodo.items():
+                nodos_por_pasillo.setdefault(pasillo.id, set()).add(nodo)
+
+            nodos_atrapados = set()
+
+            def recorrer(inicios, vecinos):
+                """Devuelve los nodos alcanzables siguiendo vecinos desde inicios."""
+                visitados = set(inicios)
+                pendientes = list(inicios)
+                while pendientes:
+                    actual = pendientes.pop()
+                    for vecino in vecinos(actual):
+                        if vecino not in visitados:
+                            visitados.add(vecino)
+                            pendientes.append(vecino)
+                return visitados
+
+            for pasillo in self._pasillos.values():
+                if pasillo.blocked:
+                    continue
+
+                nodos = nodos_por_pasillo.get(pasillo.id, set())
+                if not nodos:
+                    continue
+
+                # --- Salidas directas: usa pasillo.salida (ya guardado) ---
+                # pasillo.salida[id_destino] = celdas de este pasillo que
+                # conectan hacia el pasillo id_destino.
+                salidas_directas = set()
+                for id_destino, celdas_origen in pasillo.salida.items():
+                    if id_destino not in self._pasillos:
+                        continue
+                    for origen in celdas_origen:
+                        if origen not in nodos:
+                            continue
+                        for destino, _peso in self.reduced_graph.get(origen, ()):
+                            if (
+                                propietario_por_nodo.get(destino) is not None
+                                and propietario_por_nodo[destino].id == id_destino
+                            ):
+                                salidas_directas.add(origen)
+                                break
+
+                # Predecesores dentro del pasillo (grafo inverso local).
+                predecesores = {nodo: set() for nodo in nodos}
+                for origen in nodos:
+                    for destino, _peso in self.reduced_graph.get(origen, ()):
+                        if destino in nodos:
+                            predecesores[destino].add(origen)
+
+                # Nodos que pueden seguir hasta una salida registrada.
+                pueden_salir = recorrer(
+                    salidas_directas, lambda nodo: predecesores[nodo]
+                )
+
+                # Entradas: usa pasillo.entrada (ya guardado) 
+                # pasillo.entrada[id_origen] = celdas del pasillo id_origen que
+                # conectan hacia este pasillo.
+                entradas = set()
+                for id_origen, celdas_origen in pasillo.entrada.items():
+                    if id_origen not in self._pasillos:
+                        continue
+                    for origen in celdas_origen:
+                        if (
+                            origen not in propietario_por_nodo
+                            or propietario_por_nodo[origen].id != id_origen
+                        ):
+                            continue
+                        for destino, _peso in self.reduced_graph.get(origen, ()):
+                            if destino in nodos:
+                                entradas.add(destino)
+
+                alcanzables = recorrer(
+                    entradas,
+                    lambda nodo: (
+                        destino for destino, _peso
+                        in self.reduced_graph.get(nodo, ())
+                        if destino in nodos
+                    ),
+                )
+
+                nodos_atrapados.update(alcanzables - pueden_salir)
+
+            if not nodos_atrapados:
+                break
+
+            pasillos_afectados = {
+                propietario_por_nodo[nodo]
+                for nodo in nodos_atrapados
+                if nodo in propietario_por_nodo
+            }
+            celdas_sector = set()
+            rectangulos_sector = []
+
+            for pasillo in pasillos_afectados:
+                nodos_pasillo = nodos_por_pasillo.get(pasillo.id, set())
+                nodos_sector = {
+                    nodo for nodo in nodos_atrapados
+                    if propietario_por_nodo.get(nodo) is pasillo
+                }
+                if not nodos_sector:
+                    continue
+
+                x0, y0 = pasillo.ubicacion
+                x1 = x0 + pasillo.ancho - 1
+                y1 = y0 + pasillo.alto - 1
+
+                vecinos_pasillo = {nodo: set() for nodo in nodos_pasillo}
+                for origen in nodos_pasillo:
+                    for destino, _peso in self.reduced_graph.get(origen, ()):
+                        if destino in nodos_pasillo:
+                            vecinos_pasillo[origen].add(destino)
+                            vecinos_pasillo[destino].add(origen)
+
+                no_procesados = set(nodos_sector)
+                while no_procesados:
+                    componente = {no_procesados.pop()}
+                    pendientes_componente = list(componente)
+                    while pendientes_componente:
+                        actual = pendientes_componente.pop()
+                        for vecino in vecinos_pasillo[actual] & no_procesados:
+                            no_procesados.remove(vecino)
+                            componente.add(vecino)
+                            pendientes_componente.append(vecino)
+
+                    x_min = min(nodo[0] for nodo in componente)
+                    x_max = max(nodo[0] for nodo in componente)
+                    y_min = min(nodo[1] for nodo in componente)
+                    y_max = max(nodo[1] for nodo in componente)
+                    if pasillo.ancho > pasillo.alto:
+                        y_min, y_max = y0, y1
+                    elif pasillo.alto > pasillo.ancho:
+                        x_min, x_max = x0, x1
+                    else:
+                        x_min, x_max = max(x_min, x0), min(x_max, x1)
+                        y_min, y_max = max(y_min, y0), min(y_max, y1)
+
+                    esquinas = {
+                        (x_min, y_min), (x_min, y_max),
+                        (x_max, y_min), (x_max, y_max),
+                    }
+                    if len(esquinas) == 4:
+                        celdas_rectangulo = self._celdas_rectangulo(*esquinas)
+                    else:
+                        extremos = tuple(esquinas)
+                        if len(extremos) == 1:
+                            celdas_rectangulo = set(extremos)
+                        else:
+                            celdas_rectangulo = self._celdas_rectangulo(*extremos)
+                    celdas_rectangulo &= set(pasillo.cells())
+                    celdas_sector.update(celdas_rectangulo)
+                    rectangulos_sector.append((x_min, y_min, x_max, y_max))
+
+            def arista_cruza_sector(origen, destino):
+                x_a, y_a = origen
+                x_b, y_b = destino
+                for x_min, y_min, x_max, y_max in rectangulos_sector:
+                    if x_a == x_b and x_min <= x_a <= x_max:
+                        if max(min(y_a, y_b), y_min) <= min(max(y_a, y_b), y_max):
+                            return True
+                    elif y_a == y_b and y_min <= y_a <= y_max:
+                        if max(min(x_a, x_b), x_min) <= min(max(x_a, x_b), x_max):
+                            return True
+                return False
+
+            # Quita nodos eliminados y todas las aristas que llegan a ellos.
+            self.graph = {
+                nodo: [(destino, peso) for destino, peso in aristas
+                       if destino not in celdas_sector]
+                for nodo, aristas in self.graph.items()
+                if nodo not in celdas_sector
+            }
+
+            # Modifica el grafo reducido existente: no vuelve a construirlo.
+            for nodo in tuple(self.reduced_graph):
+                if nodo in celdas_sector:
+                    del self.reduced_graph[nodo]
+                    continue
+                self.reduced_graph[nodo][:] = [
+                    (destino, peso)
+                    for destino, peso in self.reduced_graph[nodo]
+                    if destino in self.reduced_graph
+                    and destino not in celdas_sector
+                    and not arista_cruza_sector(nodo, destino)
+                ]
+
+            self.celdas.difference_update({
+                vertice for vertice in self.celdas
+                if vertice.ubicacion in celdas_sector
+            })
+            self._aisle_cell.difference_update(celdas_sector)
+            celdas_eliminadas.update(celdas_sector)
+
+            # Mantiene actualizado el mapa celda -> pasillo: solo quita
+            # las eliminadas, no recorre todo de nuevo.
+            for celda in celdas_sector:
+                propietario_por_celda.pop(celda, None)
+
+            # Actualiza entrada/salida filtrando las listas ya guardadas,
+            # sin reconstruir índices desde cero
+            for pasillo_origen in self._pasillos.values():
+                for id_destino in tuple(pasillo_origen.salida.keys()):
+                    pasillo_destino = self._pasillos.get(id_destino)
+                    if pasillo_destino is None:
+                        pasillo_origen.salida.pop(id_destino, None)
+                        continue
+                    destinos_activos = {
+                        nodo for nodo, p in propietario_por_celda.items()
+                        if p.id == id_destino
+                    }
+                    origenes_vivos = [
+                        origen for origen in pasillo_origen.salida[id_destino]
+                        if origen not in celdas_sector
+                        and any(
+                            destino in destinos_activos
+                            for destino, _peso in self.graph.get(origen, ())
+                        )
+                    ]
+                    if origenes_vivos:
+                        pasillo_origen.salida[id_destino] = origenes_vivos
+                        pasillo_destino.entrada[pasillo_origen.id] = list(
+                            origenes_vivos
+                        )
+                    else:
+                        pasillo_origen.salida.pop(id_destino, None)
+                        pasillo_destino.entrada.pop(pasillo_origen.id, None)
+
+            for pasillo in self._pasillos.values():
+                if (not set(pasillo.cells()) - celdas_eliminadas
+                        and not pasillo.blocked):
+                    pasillo.blocked = True
 
     def _nodos_despacho_en_grafo(self):
         """Celdas del grafo reducido adyacentes a alguna zona de despacho."""
