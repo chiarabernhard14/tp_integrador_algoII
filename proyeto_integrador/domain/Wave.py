@@ -1,6 +1,6 @@
 class Wave:
 
-    def __init__(self, id="", orders=None, max_orders_capacity=0, max_products_capacity=0, locations_to_visit=None, route=None, status="CREADA",products=None):
+    def __init__(self, id="", orders=None, max_orders_capacity=1, max_products_capacity=1, locations_to_visit=None, route=None, status="CREADA",products=None):
         self.id = id
         self.orders = list(orders) if orders is not None else []
         self.max_orders_capacity = max_orders_capacity
@@ -80,8 +80,8 @@ class Wave:
     def _validar_capacidad(value, nombre):
         if not isinstance(value, int) or isinstance(value, bool):
             raise TypeError(f"{nombre} debe ser un entero.")
-        if value < 0:
-            raise ValueError(f"{nombre} no puede ser negativo.")
+        if value < 1:
+            raise ValueError(f"{nombre} debe ser mayor que cero.")
 
     @property
     def locations_to_visit(self):
