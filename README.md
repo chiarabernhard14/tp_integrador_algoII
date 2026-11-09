@@ -70,7 +70,6 @@ En **Automático** se configuran estantes, pasillos, productos, pedidos, pickers
 
 En **Manual** se dibujan los elementos sobre el mapa. Al soltar una zona de despacho se puede ingresar su peso máximo individual; si se cancela ese cuadro, la zona conserva el valor inicial de 500 kg. El editor valida el mapa antes de permitir usarlo.
 
-Atajos del editor Manual: `1` rack, `2` despacho, `3` puerta, `4` pasillo, `5` picker, `6` borrar y `7` producto. Para cambiar el sentido del pasillo se usan `N`, `S`, `E`, `O` o `A` (ambos sentidos); `Ctrl+Z` deshace y `V` valida el mapa.
 
 ### Cómo se asignan las waves y los pickers
 
@@ -132,4 +131,3 @@ Módulos relevantes:
 - `visualization/GeneradorPantalla.py` y `EditorEsc.py`: generación automática y edición manual de mapas.
 
 
-```
