@@ -218,6 +218,7 @@ class EditorEscenario:
         self.pincel = pincel
         self.pantalla = pincel.pantalla
         self.fuentes = fuentes
+        self.fuente_estado = pygame.font.SysFont(cfg.FUENTES, 20, bold=True)
         self.sprites = FabricaSprites(cfg.ESTILO_PICKER)
         self.cartones = FabricaProductos()
         self.capa = CapaMapa(fuentes)
@@ -231,6 +232,7 @@ class EditorEscenario:
         self.picker_movido = -1       # índice del picker que se está arrastrando, o -1
         self.cuadro = None
         self.mensaje = ""
+        self.alerta_pendiente = ""
 
         # Validación automática con retraso
         self._ultimo_cambio = 0.0
@@ -356,6 +358,7 @@ class EditorEscenario:
     def _abrir_cuadro(self, celda):
         if not self.modelo.rack_en(celda[0], celda[1]):
             self.mensaje = "Hacé click sobre un rack"
+            self.alerta_pendiente = self.mensaje
             return
         z = self.modelo.siguiente_z(celda[0], celda[1])
         self.cuadro = CuadroProducto(self.fuentes, celda, z)
@@ -372,8 +375,10 @@ class EditorEscenario:
                     peso = cuadro.numero()
                 except ValueError:
                     self.mensaje = "Ingresá un peso máximo válido en kg"
+                    self.alerta_pendiente = self.mensaje
                     return
                 self.mensaje = self.modelo.establecer_peso_zona(cuadro.zona_id, peso)
+                self.alerta_pendiente = self.mensaje
                 self._marcar_cambio()
                 if not self.mensaje:
                     self.cuadro = None
@@ -382,9 +387,11 @@ class EditorEscenario:
                 z, stock, peso = self.cuadro.numeros()
             except ValueError:
                 self.mensaje = "Completá z, stock y peso con números válidos"
+                self.alerta_pendiente = self.mensaje
                 return
             x, y = self.cuadro.celda
             self.mensaje = self.modelo.agregar_producto(x, y, z, stock, peso)
+            self.alerta_pendiente = self.mensaje
             self._marcar_cambio()
             if not self.mensaje:
                 self.cuadro = None
@@ -588,12 +595,29 @@ class EditorEscenario:
         texto = f"Herramienta: {self.herramienta}"
         if self.herramienta == "pasillo":
             texto += f" (sentido {self.sentido})"
-        if self.herramienta == "picker":
+        if self.herramienta == "picker" and not self.mensaje:
             texto += " (clic para colocar, arrastrá uno para moverlo)"
-        if self.mensaje:
-            texto += "   |   " + self.mensaje
         fondo = g.rect(0, 0, g.ancho_celdas, g.alto_celdas)
-        self.pincel.texto(texto, self.fuentes.normal, cfg.TEXTO, g.x, fondo.bottom + 8)
+        y = fondo.bottom + 8
+        if not self.mensaje:
+            self.pincel.texto(
+                texto, self.fuente_estado, cfg.TEXTO_PRINCIPAL, g.x, y
+            )
+            return
+
+        etiqueta = self.fuente_estado.render(texto, True, cfg.TEXTO_PRINCIPAL)
+        aviso = self.fuente_estado.render(self.mensaje, True, (255, 190, 190))
+        x_aviso = g.x + etiqueta.get_width() + 14
+        rect_aviso = aviso.get_rect(topleft=(x_aviso + 10, y + 1))
+        fondo_aviso = rect_aviso.inflate(20, 10)
+        pygame.draw.rect(
+            self.pantalla, (70, 38, 44), fondo_aviso, border_radius=7
+        )
+        pygame.draw.rect(
+            self.pantalla, cfg.ROJO, fondo_aviso, 1, border_radius=7
+        )
+        self.pantalla.blit(etiqueta, (g.x, y))
+        self.pantalla.blit(aviso, rect_aviso)
 
     # ---------- miniatura (la usa la pestaña Automático) ----------
 
