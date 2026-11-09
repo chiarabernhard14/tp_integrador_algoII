@@ -461,11 +461,17 @@ class Asignador:
         )
         return self._crear_trabajos(wave, pickers, mejor)
 
-    def asignar(self, libres):
+    def asignar(self, libres, wave_id=None):
         """Asigna dinámicamente un viaje a cada picker libre, como máximo."""
         candidatos = sorted(list(libres), key=_id)
         trabajos = []
-        for wave in self.waves:
+        waves = self.waves
+        if wave_id is not None:
+            wave_id = str(wave_id)
+            waves = [wave for wave in self.waves if wave["id"] == wave_id]
+            if not waves:
+                raise ValueError(f"No existe la wave {wave_id}.")
+        for wave in waves:
             if not candidatos:
                 break
             if not wave["pendiente"]:
@@ -475,7 +481,7 @@ class Asignador:
             ocupados = {trabajo["picker"] for trabajo in asignados}
             candidatos = [p for p in candidatos if _id(p) not in ocupados]
         if not trabajos and self.hay_pendiente() and not self.hay_trabajos_en_curso():
-            self.descartar_imposibles(candidatos)
+            self.descartar_imposibles(candidatos, waves=waves)
         return trabajos
 
     def trabajo_entregado(self, trabajo_id):
@@ -583,8 +589,9 @@ class Asignador:
     def hay_trabajos_en_curso(self):
         return any(wave["trabajos"] for wave in self.waves)
 
-    def descartar_imposibles(self, libres):
-        for wave in self.waves:
+    def descartar_imposibles(self, libres, waves=None):
+        waves = self.waves if waves is None else waves
+        for wave in waves:
             for producto_id, cantidad in wave["pendiente"].items():
                 producto = self.productos.get(producto_id)
                 peso_unidad = float(producto.peso_kg) if producto is not None else 0.0

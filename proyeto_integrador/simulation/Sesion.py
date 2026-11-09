@@ -128,6 +128,13 @@ class Sesion:
         if self.sim.terminada:
             self.corriendo = False
 
+    def preparar_wave(self, wave_id):
+        """Prepara una wave seleccionada y refresca el estado visible."""
+        try:
+            return self.sim.preparar_wave(wave_id)
+        finally:
+            self._refrescar_estado()
+
     # ---------- escenarios, waves y partidas ----------
 
     # CÓDIGO MUERTO — REVISAR (no se llama desde ningún archivo vivo)

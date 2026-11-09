@@ -3,7 +3,7 @@
 import pygame
 
 from . import Config as cfg
-from .Widgets import Boton, dibujar_boton, pos_mouse
+from .Widgets import Boton, Button, dibujar_boton, pos_mouse
 
 
 class PanelLateral:
@@ -332,12 +332,55 @@ class PanelWaves:
         self.fuentes = fuentes
         self.sesion = sesion
         self.desplazamiento = 0
+        self.wave_seleccionada = None
+        self.boton_preparar_rect = pygame.Rect(
+            self.X + self.ANCHO - self.PADDING - 96, 362, 96, 24
+        )
 
     def desplazar(self, pasos):
         """Mueve la lista de waves visible (rueda del mouse)."""
         total = len(self.sesion.estado.get("waves", []))
         maximo = max(0, total - self.MAX_WAVES)
         self.desplazamiento = max(0, min(maximo, self.desplazamiento + pasos))
+
+    def limpiar_seleccion(self):
+        self.wave_seleccionada = None
+
+    def evento_clic(self, pos):
+        """Selecciona una wave visible o solicita preparar la seleccionada."""
+        if self.boton_preparar_rect.collidepoint(pos):
+            return (
+                "preparar_wave"
+                if self._wave_seleccionada_pendiente(self.sesion.estado)
+                else "seleccionar_wave"
+            )
+
+        waves = sorted(self.sesion.estado.get("waves", []), key=self._clave_wave)
+        visibles = waves[self.desplazamiento:self.desplazamiento + self.MAX_WAVES]
+        x = self.X + self.PADDING
+        ancho = self.ANCHO - 2 * self.PADDING
+        for indice, wave in enumerate(visibles):
+            rect = pygame.Rect(
+                x, 390 + indice * self.PASO_WAVE, ancho, self.ALTO_WAVE
+            )
+            if rect.collidepoint(pos):
+                self.wave_seleccionada = str(wave.get("id", ""))
+                return "seleccionar_wave"
+        return None
+
+    def _wave_seleccionada_pendiente(self, estado):
+        if estado.get("tick", 0) != 0 or self.sesion.corriendo:
+            return False
+        if any(
+            str(wave.get("estado", "")).upper() in ("ASIGNADA", "EN_PROCESO")
+            for wave in estado.get("waves", [])
+        ):
+            return False
+        return any(
+            str(wave.get("id", "")) == self.wave_seleccionada
+            and str(wave.get("estado", "")).upper() == "CREADA"
+            for wave in estado.get("waves", [])
+        )
 
     def dibujar(self):
         x = self.X
@@ -490,24 +533,31 @@ class PanelWaves:
         ancho = self.ANCHO - 2 * self.PADDING
 
         waves = estado.get("waves", [])
-        p.texto("WAVES", f.mini, cfg.TEXTO_SUAVE, x, 370)
-
         ordenadas = sorted(waves, key=self._clave_wave)
+        if self.wave_seleccionada is not None and not any(
+            str(wave.get("id", "")) == self.wave_seleccionada
+            for wave in ordenadas
+        ):
+            self.wave_seleccionada = None
         total = len(ordenadas)
         maximo = max(0, total - self.MAX_WAVES)
         self.desplazamiento = min(self.desplazamiento, maximo)
         inicio = self.desplazamiento
         visibles = ordenadas[inicio:inicio + self.MAX_WAVES]
 
-        if total > self.MAX_WAVES:
-            rango = f"{inicio + 1}–{inicio + len(visibles)} de {total}"
-        else:
-            rango = f"{total} en total"
-        p.texto(rango, f.mini, cfg.TEXTO_SUAVE, x + ancho, 370, "der")
+        p.texto(f"WAVES · {total}", f.mini, cfg.TEXTO_SUAVE, x, 370)
+        Button(
+            "preparar_wave", "Preparar", self.boton_preparar_rect,
+            variante="primary",
+            habilitado=self._wave_seleccionada_pendiente(estado),
+        ).dibujar(self.pantalla, f.mini)
 
         y_inicio = 390
         for indice, wave in enumerate(visibles):
-            self._dibujar_wave(wave, y_inicio + indice * self.PASO_WAVE)
+            self._dibujar_wave(
+                wave, y_inicio + indice * self.PASO_WAVE,
+                seleccionada=(str(wave.get("id", "")) == self.wave_seleccionada),
+            )
 
         if maximo:
             self._dibujar_barra_waves(x, ancho, y_inicio, total, maximo)
@@ -529,13 +579,18 @@ class PanelWaves:
         return (self.PRIORIDAD_WAVE.get(estado, 3),
                 wave.get("numero", 0), str(wave.get("id", "")))
 
-    def _dibujar_wave(self, wave, y):
+    def _dibujar_wave(self, wave, y, seleccionada=False):
         x = self.X + self.PADDING
         ancho = self.ANCHO - 2 * self.PADDING
         pygame.draw.rect(self.pantalla, cfg.TARJETA,
                          (x, y, ancho, self.ALTO_WAVE), border_radius=8)
-        pygame.draw.rect(self.pantalla, cfg.BORDE_SUTIL,
-                         (x, y, ancho, self.ALTO_WAVE), 1, border_radius=8)
+        pygame.draw.rect(
+            self.pantalla,
+            cfg.ACENTO if seleccionada else cfg.BORDE_SUTIL,
+            (x, y, ancho, self.ALTO_WAVE),
+            2 if seleccionada else 1,
+            border_radius=8,
+        )
 
         estado = str(wave.get("estado", "CREADA")).upper()
         nombre_estado = self.NOMBRES_WAVE.get(estado, estado.replace("_", " ").title())
