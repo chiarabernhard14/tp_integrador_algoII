@@ -142,7 +142,6 @@ class Simulacion:
                 )
             picker.estado = "deambulando"
 
-        self._asignar_trabajos()
         self._registrar("Simulación inicializada.")
 
     # ---------- carga de waves ----------
@@ -186,13 +185,13 @@ class Simulacion:
         for pid in self.productos_inaccesibles:
             self.productos.pop(pid, None)
 
-    def _asignar_trabajos(self):
+    def _asignar_trabajos(self, wave_id=None):
         """Pide trabajo nuevo para cada picker libre."""
         libres = [p for p in self.pickers if p.wave is None and p.estado != "bloqueado"]
         imposibles_anteriores = len(self.asignador.imposibles)
         inicio = time.perf_counter()
         try:
-            trabajos = self.asignador.asignar(libres)
+            trabajos = self.asignador.asignar(libres, wave_id=wave_id)
         finally:
             duracion_ms = (time.perf_counter() - inicio) * 1000
             self.tiempo_asignacion_ms += duracion_ms
@@ -245,6 +244,34 @@ class Simulacion:
                 f"{self.estrategia}, {self.algoritmo_camino}, "
                 f"distancia estimada {trabajo['distancia_estimada']:g})."
             )
+        return trabajos
+
+    def preparar_wave(self, wave_id):
+        """Preasigna una wave elegida antes de iniciar el movimiento."""
+        if self.tick != 0 or self.terminada:
+            raise ValueError("Solo se puede preparar una wave antes de iniciar la simulación.")
+        wave_id = str(wave_id)
+        wave = next((w for w in self.waves if w["id"] == wave_id), None)
+        if wave is None:
+            raise ValueError(f"No existe la wave {wave_id}.")
+        if wave["estado"] != "CREADA":
+            raise ValueError(f"La wave {wave_id} ya no está pendiente de preparación.")
+        if any(w["estado"] in ("ASIGNADA", "EN_PROCESO") for w in self.waves):
+            raise ValueError("Ya hay una wave preparada; iniciá la simulación para continuar.")
+
+        # La wave elegida queda primera en la cola para que, tras prepararla,
+        # la asignación automática continúe con su trabajo pendiente y luego
+        # con las waves siguientes.
+        self.waves.remove(wave)
+        self.waves.insert(0, wave)
+        trabajos = self._asignar_trabajos(wave_id=wave_id)
+        if not trabajos:
+            raise ValueError(f"No se pudo preparar la wave {wave_id}: no hay viajes factibles.")
+        wave["estado"] = "ASIGNADA"
+        self._registrar(
+            f"{wave_id}: preparada; {len(trabajos)} viaje(s) reservado(s)."
+        )
+        return len(trabajos)
 
     # ---------- despacho y patrulla ----------
 
@@ -351,6 +378,13 @@ class Simulacion:
                     picker.ruta = []
                     picker.destinos = set()
                     picker.estado = "disponible"
+            # Si se eligió una wave para preparar, se completan los viajes
+            # libres restantes con la asignación automática habitual.
+            self._asignar_trabajos()
+
+        for wave in self.waves:
+            if wave["estado"] == "ASIGNADA" and wave["trabajos"]:
+                wave["estado"] = "EN_PROCESO"
 
         for picker in self.colisiones.orden_movimiento():
             self._avanzar(picker)
@@ -695,6 +729,10 @@ class Simulacion:
             estado.get("capacidad_despacho"),
             estado.get("pedidos_incompletos"),
         )
+        if estado["tick"] == 0:
+            for wave in self.waves:
+                if wave["trabajos"] and wave["estado"] == "EN_PROCESO":
+                    wave["estado"] = "ASIGNADA"
         self.alertas_pendientes.clear()
         for zona_id, capacidad in self.asignador.zonas_completas_nuevas():
             self.alertas_pendientes.append(

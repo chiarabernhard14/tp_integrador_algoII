@@ -132,8 +132,6 @@ Módulos relevantes:
 - `visualization/Main.py`: punto de entrada de la aplicación.
 - `visualization/GeneradorPantalla.py` y `EditorEsc.py`: generación automática y edición manual de mapas.
 
-La carpeta `backup_archivos_inutiles/` contiene versiones archivadas y no forma parte de la ejecución normal.
-
 ## Medición de carga
 
 Desde la raíz del repositorio podés ejecutar los casos pequeños del script de medición:

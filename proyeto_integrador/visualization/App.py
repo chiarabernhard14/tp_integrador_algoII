@@ -88,6 +88,7 @@ class App:
         """Tras cambiar la simulación: nuevo tamaño de mapa y animación en cero."""
         self.vista.recalcular()
         self.anim.reiniciar()
+        self.panel_waves.limpiar_seleccion()
 
     # ---------- acciones ----------
 
@@ -166,6 +167,8 @@ class App:
             self._validar_editor()
         elif nombre == "usar_editor":
             self._usar_editor()
+        elif nombre == "preparar_wave":
+            self._preparar_wave()
 
 
     def _cargar_escenario(self):
@@ -236,6 +239,18 @@ class App:
         self.alerta.mostrar("Listo", f"Escenario cargado. Se generaron {cantidad} pedidos "
                                      f"al azar con los productos del mapa.")
         self._mostrar_inaccesibles_si_corresponde()
+
+    def _preparar_wave(self):
+        wave_id = self.panel_waves.wave_seleccionada
+        if wave_id is None:
+            raise ValueError("Seleccioná una wave pendiente para prepararla.")
+        viajes = self.sesion.preparar_wave(wave_id)
+        self.alerta.mostrar(
+            "Listo",
+            f"{wave_id} preparada y asignada en {viajes} viaje(s). "
+            "Al iniciar, las waves continúan con la asignación normal.",
+        )
+        self._guardar_autopartida()
 
     def _mostrar_inaccesibles_si_corresponde(self):
         """Muestra una alerta si el escenario cargado tiene productos inaccesibles."""
@@ -400,6 +415,12 @@ class App:
         elif ev.type == pygame.MOUSEWHEEL:
             self._rueda(ev)
         elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            accion_wave = self.panel_waves.evento_clic(ev.pos)
+            if accion_wave == "preparar_wave":
+                self._click(accion_wave)
+                return
+            if accion_wave == "seleccionar_wave":
+                return
             self._clic_mouse(ev.pos)
 
     def _rueda(self, ev):
