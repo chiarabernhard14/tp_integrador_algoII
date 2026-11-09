@@ -1,13 +1,27 @@
 """Modelo del escenario que arma el editor de mapa (sin pygame).
 
 Guarda los elementos como diccionarios con el mismo formato del JSON del
-anexo A. Acá solo hay reglas de colocación y de exportación; la validación de
-estructura la hacen las clases del Warehouse y la de alcanzabilidad es
+anexo A. Acá quedan las reglas de colocación propias del editor y la
+exportación; la geometría compartida vive en domain.Validation, la validación
+de estructura la hacen las clases del Warehouse y la de alcanzabilidad es
 Scenario.validar_escenario.
 """
 
 import copy
 import math
+
+from domain.Validation import (
+    adjacent_cells,
+    border_cells,
+    inside_bounds,
+    on_border,
+    point_in_rect,
+    rack_clearance_error,
+    rack_side_ok,
+    rect_contains,
+    rects_overlap,
+    same_rect,
+)
 
 from .Scenario import validar_escenario
 
@@ -52,21 +66,23 @@ class ModeloEscenario:
 
     # ---------- geometría ----------
 
+    @staticmethod
+    def _rect_de(elem):
+        """Devuelve (x, y, ancho, alto) de un elemento serializado."""
+        u = elem["ubicacion"]
+        return u["x"], u["y"], elem["ancho"], elem["alto"]
+
     def _contiene(self, elem, x, y):
-        ex = elem["ubicacion"]["x"]
-        ey = elem["ubicacion"]["y"]
-        return ex <= x < ex + elem["ancho"] and ey <= y < ey + elem["alto"]
+        return point_in_rect(x, y, *self._rect_de(elem))
 
     def _solapa(self, nombre, x, y, w, h):
-        for e in getattr(self, nombre):
-            ex = e["ubicacion"]["x"]
-            ey = e["ubicacion"]["y"]
-            if x < ex + e["ancho"] and ex < x + w and y < ey + e["alto"] and ey < y + h:
-                return True
-        return False
+        return any(
+            rects_overlap(x, y, w, h, *self._rect_de(e))
+            for e in getattr(self, nombre)
+        )
 
     def _en_borde_warehouse(self, x, y):
-        return x == 0 or x == self.ancho_x - 1 or y == 0 or y == self.largo_y - 1
+        return on_border(x, y, self.ancho_x, self.largo_y)
 
     def _puerta_sobre_zona(self, x, y):
         """La celda es borde del warehouse y pertenece a una zona de despacho.
@@ -96,22 +112,13 @@ class ModeloEscenario:
         return True
 
     def _solapa_rect(self, elemento, x, y, w, h):
-        ex = elemento["ubicacion"]["x"]
-        ey = elemento["ubicacion"]["y"]
-        return (x < ex + elemento["ancho"] and ex < x + w
-                and y < ey + elemento["alto"] and ey < y + h)
+        return rects_overlap(x, y, w, h, *self._rect_de(elemento))
 
     def _contiene_rect(self, elemento, x, y, w, h):
-        ex = elemento["ubicacion"]["x"]
-        ey = elemento["ubicacion"]["y"]
-        return (x <= ex and y <= ey
-                and ex + elemento["ancho"] <= x + w
-                and ey + elemento["alto"] <= y + h)
+        return rect_contains(*self._rect_de(elemento), x, y, w, h)
 
     def _mismo_rect(self, elemento, x, y, w, h):
-        return (elemento["ubicacion"]["x"] == x
-                and elemento["ubicacion"]["y"] == y
-                and elemento["ancho"] == w and elemento["alto"] == h)
+        return same_rect(*self._rect_de(elemento), x, y, w, h)
 
     def _pasillo_solapa_permitida(self, x, y, w, h):
         """Un pasillo nuevo puede cubrir por completo a los que solapa.
@@ -135,19 +142,20 @@ class ModeloEscenario:
             return "La ubicación y el tamaño deben expresarse en celdas enteras"
         if w < 1 or h < 1:
             return "El elemento debe ocupar al menos una celda"
-        if x < 0 or y < 0 or x + w > self.ancho_x or y + h > self.largo_y:
+        if not inside_bounds(x, y, w, h, self.ancho_x, self.largo_y):
             return "Se sale del warehouse"
-        if herramienta == "rack" and w != 2 and h != 2:
+        if herramienta == "rack" and not rack_side_ok(w, h):
             return "Un lado del rack tiene que valer 2"
         if herramienta == "rack":
-            if w == 2 and (x < 1 or x + w >= self.ancho_x):
-                return "El rack necesita espacio libre a ambos lados para acceder a sus productos"
-            if w != 2 and (y < 1 or y + h >= self.largo_y):
-                return "El rack necesita espacio libre a ambos lados para acceder a sus productos"
+            motivo = rack_clearance_error(
+                x, y, w, h, self.ancho_x, self.largo_y
+            )
+            if motivo:
+                return motivo
         if herramienta == "puerta":
             if (w, h) != (1, 1):
                 return "La puerta ocupa una sola celda"
-            if not self._en_borde_warehouse(x, y):
+            if not on_border(x, y, self.ancho_x, self.largo_y):
                 return "La puerta tiene que ir sobre el borde"
         for nombre in BLOQUEAN[herramienta]:
             if (herramienta == "puerta" and nombre == "zonas"
@@ -360,14 +368,8 @@ class ModeloEscenario:
 
     def _celdas_del_borde(self, elemento):
         """Celdas del elemento que también están sobre el borde del warehouse."""
-        x0 = elemento["ubicacion"]["x"]
-        y0 = elemento["ubicacion"]["y"]
-        return {
-            (x, y)
-            for x in range(x0, x0 + elemento["ancho"])
-            for y in range(y0, y0 + elemento["alto"])
-            if self._en_borde_warehouse(x, y)
-        }
+        x, y, w, h = self._rect_de(elemento)
+        return border_cells(x, y, w, h, self.ancho_x, self.largo_y)
 
     def _celdas_de_puerta(self, zona):
         """Celdas donde puede ir la puerta de una zona.
@@ -379,18 +381,8 @@ class ModeloEscenario:
 
     def _celdas_adyacentes(self, elemento):
         """Celdas vecinas del rectángulo que quedan dentro del warehouse."""
-        x0 = elemento["ubicacion"]["x"]
-        y0 = elemento["ubicacion"]["y"]
-        ancho, alto = elemento["ancho"], elemento["alto"]
-        resultado = set()
-        for x in range(x0, x0 + ancho):
-            resultado.update(((x, y0 - 1), (x, y0 + alto)))
-        for y in range(y0, y0 + alto):
-            resultado.update(((x0 - 1, y), (x0 + ancho, y)))
-        return {
-            (x, y) for x, y in resultado
-            if 0 <= x < self.ancho_x and 0 <= y < self.largo_y
-        }
+        x, y, w, h = self._rect_de(elemento)
+        return adjacent_cells(x, y, w, h, self.ancho_x, self.largo_y)
 
     # ---------- exportar ----------
 

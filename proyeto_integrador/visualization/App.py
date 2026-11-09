@@ -81,6 +81,8 @@ class App:
         self.generador = None
         if partida_guardada is not None:
             self.alerta.mostrar("Listo", "Se restauró la última partida guardada.")
+        else:
+            self._mostrar_inaccesibles_si_corresponde()
 
     def _refrescar_vista(self):
         """Tras cambiar la simulación: nuevo tamaño de mapa y animación en cero."""

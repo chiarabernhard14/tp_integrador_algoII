@@ -274,7 +274,7 @@ class Warehouse:
         if picker.id in self._pickers:
             raise ValueError("Ya existe un picker con el mismo id.")
         self.validate_inside_warehouse(picker.posicion)
-        
+
         self._pickers[picker.id] = picker
 
     # Productos
@@ -1198,4 +1198,4 @@ class Warehouse:
         
         self.graph[origen].insert(0, (destino, distancia))
 
-  
+

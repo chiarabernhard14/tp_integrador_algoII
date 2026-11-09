@@ -1,4 +1,5 @@
 from .Recorridos import PathFinderV
+from domain.ProductoInaccesible import ProductoInaccesible
 DIRECCIONES = (
     (0, 1),
     (0, -1),
@@ -37,6 +38,33 @@ class GrafoFiltrado:
 
 
 class Navegacion:
+
+    @staticmethod
+    def verificar_alcanzables(warehouse):
+        """Valida rutas dirigidas entre despacho, productos y pickers."""
+        nav = Navegacion(warehouse)
+        if not nav.despacho:
+            raise ValueError(
+                "Ninguna celda de pasillo es adyacente a una zona de despacho."
+            )
+        origen = next(iter(nav.despacho))
+        inaccesibles = []
+        for producto in warehouse.productos.values():
+            accesos = nav.accesos(producto.ubicacion[0], producto.ubicacion[1])
+            ida = any(nav.camino(origen, {acceso}) is not None for acceso in accesos)
+            vuelta = any(nav.camino(acceso, nav.despacho) is not None for acceso in accesos)
+            if not ida or not vuelta:
+                inaccesibles.append(producto.id)
+        if inaccesibles:
+            raise ProductoInaccesible(
+                "No existe un camino dirigido de ida y vuelta entre el despacho "
+                "y los productos: " + ", ".join(sorted(inaccesibles)) + "."
+            )
+        for picker in warehouse.pickers.values():
+            pos = tuple(picker.posicion[:2])
+            if pos not in nav.vecinos:
+                raise ValueError(f"{picker.id} no esta sobre una celda de pasillo.")
+        return []
 
     def __init__(self, warehouse, algoritmo="dijkstra"):
         buscadores = {

@@ -117,14 +117,26 @@ class VistaPreviaEscenario:
 
     def _dibujar_zonas(self):
         fuente = self.fuentes.mini
+        puertas = self.datos["warehouse"]["puertas"]
         for numero, zona in enumerate(self.datos["warehouse"]["zonas_despacho"], 1):
             ubicacion = zona["ubicacion"]
-            r = self._rect(ubicacion["x"], ubicacion["y"], zona["ancho"], zona["alto"])
-            pygame.draw.rect(self.pantalla, mapa.DESPACHO_ABAJO, r)
-            pygame.draw.rect(self.pantalla, mapa.DESPACHO_BORDE, r, 2 if r.w > 8 else 1)
-            if r.w >= 44 and r.h >= 16:
+            zona_rect = self._rect(ubicacion["x"], ubicacion["y"], zona["ancho"], zona["alto"])
+            area_rect = zona_rect.copy()
+            puerta = next((p for p in puertas if p["id"] == zona.get("puerta_id")), None)
+            if puerta is not None:
+                px = puerta["ubicacion"]["x"]
+                py = puerta["ubicacion"]["y"]
+                x0, y0 = ubicacion["x"], ubicacion["y"]
+                x1, y1 = x0 + zona["ancho"], y0 + zona["alto"]
+                if ((x0 <= px < x1 and py in (y0 - 1, y1))
+                        or (y0 <= py < y1 and px in (x0 - 1, x1))):
+                    area_rect = area_rect.union(self._rect(px, py, 1, 1))
+            pygame.draw.rect(self.pantalla, mapa.DESPACHO_ABAJO, area_rect)
+            pygame.draw.rect(self.pantalla, mapa.DESPACHO_BORDE, area_rect,
+                             2 if area_rect.w > 8 else 1)
+            if zona_rect.w >= 44 and zona_rect.h >= 16:
                 self.pincel.texto(f"Zona {numero}", fuente, cfg.BLANCO_SUAVE,
-                                  r.centerx, r.centery, "cc")
+                                  zona_rect.centerx, zona_rect.centery, "cc")
 
     def _dibujar_puertas(self):
         for puerta in self.datos["warehouse"]["puertas"]:

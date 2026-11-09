@@ -14,6 +14,7 @@ class Fuentes:
         nombres = cfg.FUENTES
         self.titulo = pygame.font.SysFont(nombres, 30, bold=True)
         self.sub = pygame.font.SysFont(nombres, 20, bold=True)
+        self.picker = pygame.font.SysFont(nombres, 16, bold=True)
         self.normal = pygame.font.SysFont(nombres, 16)
         self.negrita = pygame.font.SysFont(nombres, 16, bold=True)
         self.chico = pygame.font.SysFont(nombres, 13)

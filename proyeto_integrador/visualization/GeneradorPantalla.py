@@ -18,7 +18,7 @@ from .Widgets import (
     ListaPickersScroll, dibujar_boton, pos_mouse,
 )
 
-NIVELES_POR_RACK = 3     # niveles de producto por celda de rack que usa el generador (Scenario)
+NIVELES_POR_RACK = 3     # niveles de producto por celda de rack que usa el generador (ScenarioV)
 
 # (clave, etiqueta, mínimo, máximo, valor inicial, columna, fila)
 PARAMETROS = (
@@ -33,10 +33,6 @@ PARAMETROS = (
     ("max_orders_capacity", "Pedidos por wave", 0, 30, 3, 1, 3),
     ("max_products_capacity", "Productos por wave", 0, 80, 15, 1, 4),
 )
-AYUDAS = {
-    "max_orders_capacity": "0 = sin límite",
-    "max_products_capacity": "0 = sin límite",
-}
 LIMITES = {clave: (minimo, maximo) for clave, _e, minimo, maximo, _i, _c, _f in PARAMETROS}
 MODOS = (("aleatoria", "Aleatoria"), ("agrupada", "Agrupada"), ("cerca_despacho", "Cerca del despacho"))
 DESCRIPCION_MODO = {
@@ -102,9 +98,9 @@ ANCHO_STEPPER = 150
 
 # Tiles y miniatura (panel derecho, Automático)
 TILE_W = 402
-TILE_H = 88
-TARJETA_MINIATURA = pygame.Rect(PANEL_DERECHO_X + cfg.PANEL_PADDING, 348,
-                                PANEL_DERECHO_W - 2 * cfg.PANEL_PADDING, 452)
+TILE_H = 96
+TARJETA_MINIATURA = pygame.Rect(PANEL_DERECHO_X + cfg.PANEL_PADDING, 358,
+                                PANEL_DERECHO_W - 2 * cfg.PANEL_PADDING, 444)
 
 # Paso del stepper
 PASO_NORMAL = 1
@@ -112,8 +108,8 @@ PASO_SHIFT = 5
 
 # Ayuda contextual por herramienta (una sola línea)
 AYUDA_POR_HERRAMIENTA = {
-    "rack": "Dibujá estantes (un lado de 2 celdas).",
-    "despacho": "Dibujá una zona en el borde y definí su peso máximo.",
+    "rack": "Dibujá estantes.",
+    "despacho": "Dibujá zonas de despacho en el borde.",
     "puerta": "Colocá una puerta de 1×1 en el borde.",
     "pasillo": "Dibujá pasillos con sentido de circulación.",
     "picker": "Hacé clic para colocar un picker.",
@@ -133,7 +129,7 @@ PAD_ERRORES = 12
 COLOR_ERROR_FONDO = (62, 26, 34)
 COLOR_ERROR_TEXTO = (255, 222, 222)
 COLOR_VALIDO_FONDO = (22, 56, 46)
-COLOR_AYUDA = (214, 222, 238)
+COLOR_AYUDA = (236, 240, 250)
 
 
 class PantallaGenerador:
@@ -167,13 +163,13 @@ class PantallaGenerador:
             pygame.Rect(0, 0, 38, 34),
             pygame.Rect(0, 0, 120, 34),
             pygame.Rect(0, 0, 38, 34),
-            self.ancho_mapa, MAPA_MIN_X, MAPA_MAX_X, fuentes.normal,
+            self.ancho_mapa, MAPA_MIN_X, MAPA_MAX_X, fuentes.negrita,
         )
         self.stepper_alto = Stepper(
             pygame.Rect(0, 0, 38, 34),
             pygame.Rect(0, 0, 120, 34),
             pygame.Rect(0, 0, 38, 34),
-            self.alto_mapa, MAPA_MIN_Y, MAPA_MAX_Y, fuentes.normal,
+            self.alto_mapa, MAPA_MIN_Y, MAPA_MAX_Y, fuentes.negrita,
         )
 
         # Toolbar de herramientas
@@ -187,7 +183,7 @@ class PantallaGenerador:
         # Lista de pickers con scroll
         self.lista_pickers = ListaPickersScroll(
             pygame.Rect(0, 0, cfg.PANEL_CONTENIDO_W - 10, cfg.LISTA_PICKERS_ALTO_MAX),
-            fuentes.chico,
+            fuentes.picker,
             self.editor.modelo.pickers,
             cfg.COLORES_PICKER,
         )
@@ -203,18 +199,11 @@ class PantallaGenerador:
         self.btn_generar_rect = pygame.Rect(0, 0, 200, cfg.BARRA_ACCIONES_ALTO)
         self._posicionar_barra()
 
-        # Tooltip de acción
-        self.tooltip_action = None   # (rect, texto) o None
-        self.tooltip_timer = 0.0
-
         # Botones de sentido del pasillo (se llenan al dibujar, solo con la herramienta Pasillo)
         self.sentido_rects = {}
 
-        # Vista previa de la pestaña Automático ("auto": según parámetros, "manual": mapa dibujado)
-        self.vista_previa = "auto"
+        # Vista previa automática según los parámetros del escenario.
         self.previa = VistaPreviaEscenario(pincel, fuentes)
-        self._rect_vp_auto = pygame.Rect(0, 0, 0, 0)
-        self._rect_vp_manual = pygame.Rect(0, 0, 0, 0)
 
         # Líneas de error ya cortadas al ancho del panel (se recalculan si cambian los errores)
         self._errores_cacheados = None
@@ -298,14 +287,14 @@ class PantallaGenerador:
         alto_total += f.sub.get_height() + cfg.ESPACIO_ENTRE_SECCIONES
 
         # Tamaño del mapa: título + 1 fila compacta
-        alto_total += f.mini.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
+        alto_total += f.negrita.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
         alto_total += 34 + cfg.ESPACIO_ENTRE_SECCIONES
 
         # Botón Nuevo mapa en blanco
         alto_total += 34 + cfg.ESPACIO_ENTRE_SECCIONES
 
         # Herramientas
-        alto_total += f.mini.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
+        alto_total += f.negrita.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
         alto_total += 44 + cfg.ESPACIO_ENTRE_SECCIONES
 
         # Acciones (botones cuadrados chicos)
@@ -319,12 +308,12 @@ class PantallaGenerador:
 
         # Pickers colocados
         cantidad = len(self.editor.modelo.pickers)
-        alto_total += f.mini.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
+        alto_total += f.negrita.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
         lista_alto = self._alto_lista_pickers(cantidad)
         alto_total += lista_alto + cfg.ESPACIO_ENTRE_SECCIONES
 
         # Barra de estado
-        alto_total += 34
+        alto_total += 44
 
         return alto_total
 
@@ -482,12 +471,6 @@ class PantallaGenerador:
         return None
 
     def _clic_auto(self, pos):
-        if self._rect_vp_auto.collidepoint(pos):
-            self.vista_previa = "auto"
-            return "nada"
-        if self._rect_vp_manual.collidepoint(pos):
-            self.vista_previa = "manual"
-            return "nada"
         paso = self._paso()
         for clave, _etiqueta, minimo, maximo, _inicial, columna, fila in PARAMETROS:
             x, y = self._pos(columna, fila)
@@ -586,7 +569,6 @@ class PantallaGenerador:
         self.version_vista = -1
         self.sincronizados.clear()
         self.scroll_offset = 0
-        self.tooltip_action = None
         self.lista_pickers.actualizar(self.editor.modelo.pickers)
         self._actualizar_toolbuttons()
         self.stepper_ancho.valor = self.ancho_mapa
@@ -604,6 +586,16 @@ class PantallaGenerador:
         else:
             self.editor.dibujar()
             self._dibujar_panel_manual()
+            self._dibujar_cuadro_producto()
+
+    def _dibujar_cuadro_producto(self):
+        """El cuadro de producto va al final: encima del mapa y del panel, con el fondo atenuado."""
+        if self.editor.cuadro is None:
+            return
+        velo = pygame.Surface((cfg.ANCHO, cfg.ALTO), pygame.SRCALPHA)
+        velo.fill((0, 0, 0, 140))
+        self.pantalla.blit(velo, (0, 0))
+        self.editor.dibujar_cuadro()
 
     def _dibujar_cabecera(self):
         pygame.draw.rect(self.pantalla, cfg.STEPPER_FONDO, CONTENEDOR_TABS,
@@ -680,7 +672,7 @@ class PantallaGenerador:
         if self.pestana == "auto":
             Button("usar", "Usar mapa de Manual", self.btn_usar_rect, variante="secondary",
                    habilitado=self.editor.valido).dibujar(self.pantalla, f.negrita)
-            Button("generar", "Generar al azar", self.btn_generar_rect, variante="primary",
+            Button("generar", "Generar", self.btn_generar_rect, variante="primary",
                    habilitado=self._puede_generar()).dibujar(self.pantalla, f.negrita)
         else:
             Button("usar", "Usar escenario", self.btn_usar_rect, variante="primary",
@@ -693,11 +685,8 @@ class PantallaGenerador:
         x, y = self._pos(columna, fila)
         menos, valor_rect, mas = self._rects_stepper_parametro(columna, fila)
         valor = self.valores[clave]
-        ayuda = AYUDAS.get(clave)
-        y_texto = y - 2 if ayuda else y + 10
-        ancho = self.pincel.texto(etiqueta, f.normal, cfg.TEXTO_PRINCIPAL, x, y_texto)
-        if ayuda:
-            self.pincel.texto(ayuda, f.chico, cfg.TEXTO_SECUNDARIO, x, y_texto + 21)
+        y_texto = y + 10
+        ancho = self.pincel.texto(etiqueta, f.negrita, cfg.TEXTO_PRINCIPAL, x, y_texto)
         if clave in self.sincronizados and x + ancho + 80 < menos.left:
             self.pincel.texto("● manual", f.mini, cfg.VERDE, x + ancho + 8, y_texto + 4)
         self._dibujar_stepper(menos, valor_rect, mas, str(valor),
@@ -705,32 +694,6 @@ class PantallaGenerador:
         tarjeta = self._tarjeta_de(columna)
         pygame.draw.line(self.pantalla, cfg.CARD_DIVISOR,
                          (tarjeta.x + 16, y + 58), (tarjeta.right - 16, y + 58))
-
-    def _dibujar_capacidad(self):
-        f = self.fuentes
-        t = TARJETA_WAREHOUSE
-        x = t.x + 20
-        ancho = t.w - 40
-        y = t.bottom - 34
-        capacidad = self._capacidad()
-        productos = self.valores["productos"]
-        uso = productos / capacidad if capacidad else 1.0
-        if uso <= 0.8:
-            color = cfg.VERDE
-        elif uso <= 1.0:
-            color = cfg.AMARILLO
-        else:
-            color = cfg.ROJO
-        self.pincel.texto(
-            f"Ubicaciones: {productos}/{capacidad}", f.chico,
-            cfg.TEXTO_SECUNDARIO, x, y,
-        )
-        barra = pygame.Rect(x, y + 18, ancho, 8)
-        pygame.draw.rect(self.pantalla, cfg.PISTA_PROGRESO, barra, border_radius=6)
-        relleno = int(ancho * min(1.0, uso))
-        if relleno > 0:
-            pygame.draw.rect(self.pantalla, color, (x, y + 18, max(8, relleno), 8),
-                             border_radius=6)
 
     def _dibujar_pictograma(self, modo, area):
         pygame.draw.rect(self.pantalla, (26, 30, 38), area, border_radius=cfg.RADIO_S)
@@ -782,7 +745,6 @@ class PantallaGenerador:
                           TARJETA_PRODUCTOS.right - 20, TARJETA_PRODUCTOS.y + 18, "der")
         for clave, etiqueta, minimo, maximo, _inicial, columna, fila in PARAMETROS:
             self._dibujar_fila_parametro(clave, etiqueta, minimo, maximo, columna, fila)
-        self._dibujar_capacidad()
         for indice, (modo, titulo) in enumerate(MODOS):
             self._dibujar_opcion_modo(indice, modo, titulo)
 
@@ -794,20 +756,16 @@ class PantallaGenerador:
         pygame.draw.rect(self.pantalla, cfg.CARD_FONDO, rect, border_radius=cfg.RADIO_M)
         pygame.draw.rect(self.pantalla, cfg.CARD_BORDE, rect, 1, border_radius=cfg.RADIO_M)
         pygame.draw.rect(self.pantalla, color, (x + 1, y + 12, 4, TILE_H - 24), border_radius=2)
-        self.pincel.texto(etiqueta, f.mini, cfg.TEXTO_SECUNDARIO, x + 18, y + 12)
-        self.pincel.texto(valor, f.titulo, color, x + 18, y + 26)
-        color_detalle = cfg.ROJO if color == cfg.ROJO else cfg.TEXTO_SECUNDARIO
-        self.pincel.texto(detalle, f.chico, color_detalle, x + 18, y + 66)
+        self.pincel.texto(etiqueta, f.negrita, cfg.TEXTO_SECUNDARIO, x + 18, y + 10)
+        self.pincel.texto(valor, f.titulo, color, x + 18, y + 28)
+        color_detalle = (255, 150, 150) if color == cfg.ROJO else cfg.TEXTO_PRINCIPAL
+        self.pincel.texto(detalle, f.normal, color_detalle, x + 18, y + 64)
 
     def _dibujar_panel_auto(self):
         f = self.fuentes
         self._dibujar_panel_base("GENERAR ESCENARIO")
         x0 = PANEL_DERECHO_X + cfg.PANEL_PADDING
         ancho = PANEL_DERECHO_W - 2 * cfg.PANEL_PADDING
-        self.pincel.texto("Generá un warehouse al azar con los parámetros de la izquierda, "
-                          "o usá el mapa que dibujaste en Manual.",
-                          f.chico, cfg.TEXTO_SECUNDARIO, x0, 62)
-
         capacidad = self._capacidad()
         productos = self.valores["productos"]
         waves = self._waves_minimas()
@@ -829,54 +787,27 @@ class PantallaGenerador:
                            "Pueden colaborar en una misma wave" if pickers > waves
                            else f"{waves} waves para repartir")
 
-        estado = pygame.Rect(x0, 292, ancho, 40)
+        estado = pygame.Rect(x0, 306, ancho, 40)
         color = cfg.VERDE if entran else cfg.ROJO
         texto = ("Todo listo: podés generar el escenario." if entran
                  else "No se puede generar: subí estantes o alto, o bajá los productos.")
         self.pincel.rect_alfa(estado.x, estado.y, estado.w, estado.h, (*color, 40), cfg.RADIO_M)
         pygame.draw.rect(self.pantalla, color, estado, 1, border_radius=cfg.RADIO_M)
-        pygame.draw.circle(self.pantalla, color, (estado.x + 22, estado.centery), 9)
-        self.pincel.texto("✓" if entran else "!", f.negrita, (20, 24, 32),
-                          estado.x + 22, estado.centery, "cc")
-        self.pincel.texto(texto, f.normal, cfg.TEXTO_PRINCIPAL, estado.x + 42,
-                          estado.centery - f.normal.get_height() // 2)
+        self.pincel.texto(texto, f.negrita, (255, 255, 255), estado.x + 20,
+                          estado.centery - f.negrita.get_height() // 2)
 
         self._dibujar_vista_previa()
         self._dibujar_barra_acciones()
 
     def _dibujar_vista_previa(self):
         self._dibujar_tarjeta(TARJETA_MINIATURA, "VISTA PREVIA")
-        self._dibujar_selector_vista()
         marco = pygame.Rect(
             TARJETA_MINIATURA.x + 16, TARJETA_MINIATURA.y + 58,
             TARJETA_MINIATURA.w - 32, TARJETA_MINIATURA.h - 58 - 40,
         )
         pygame.draw.rect(self.pantalla, cfg.MAPA_FONDO, marco, border_radius=cfg.RADIO_S)
         self._dibujar_borde_punteado(marco, (100, 108, 122))
-        if self.vista_previa == "manual":
-            self._dibujar_miniatura_manual(marco)
-        else:
-            self._dibujar_previa_automatica(marco)
-
-    def _dibujar_selector_vista(self):
-        f = self.fuentes
-        t = TARJETA_MINIATURA
-        mouse = pos_mouse()
-        self._rect_vp_manual = pygame.Rect(t.right - 16 - 90, t.y + 9, 90, 28)
-        self._rect_vp_auto = pygame.Rect(self._rect_vp_manual.x - 8 - 110, t.y + 9, 110, 28)
-        for rect, texto, clave in ((self._rect_vp_auto, "Automático", "auto"),
-                                   (self._rect_vp_manual, "Manual", "manual")):
-            activo = self.vista_previa == clave
-            if activo:
-                fondo, borde = (58, 112, 190), (140, 188, 255)
-            elif rect.collidepoint(mouse):
-                fondo, borde = cfg.TOOL_BUTTON_FONDO_SOBRE, cfg.BOTON_BORDE_SOBRE
-            else:
-                fondo, borde = cfg.TOOL_BUTTON_FONDO, cfg.TOOL_BUTTON_BORDE
-            pygame.draw.rect(self.pantalla, fondo, rect, border_radius=cfg.RADIO_S)
-            pygame.draw.rect(self.pantalla, borde, rect, 1, border_radius=cfg.RADIO_S)
-            self.pincel.texto(texto, f.negrita if activo else f.normal, (255, 255, 255),
-                              rect.centerx, rect.centery, "cc")
+        self._dibujar_previa_automatica(marco)
 
     def _dibujar_previa_automatica(self, marco):
         """Warehouse que se generaría con los parámetros actuales (se redibuja al cambiarlos)."""
@@ -889,29 +820,6 @@ class PantallaGenerador:
         if resumen:
             self.pincel.texto(resumen, self.fuentes.normal, cfg.TEXTO_SECUNDARIO,
                               marco.centerx, marco.bottom + 8, "centro")
-
-    def _dibujar_miniatura_manual(self, marco):
-        f = self.fuentes
-        if self.editor.esta_vacio():
-            icono = pygame.Surface((112, 72), pygame.SRCALPHA)
-            color_icono = (210, 220, 238, 90)
-            pygame.draw.rect(icono, color_icono, (5, 5, 102, 62), 2, border_radius=6)
-            for cx in (39, 73):
-                pygame.draw.line(icono, color_icono, (cx, 7), (cx, 65), 2)
-            for cy in (27, 48):
-                pygame.draw.line(icono, color_icono, (7, cy), (105, cy), 2)
-            self.pantalla.blit(icono, icono.get_rect(center=(marco.centerx, marco.centery - 24)))
-            self.pincel.texto("Todavía no dibujaste nada.", f.negrita, cfg.TEXTO_PRINCIPAL,
-                              marco.centerx, marco.centery + 26, "centro")
-            self.pincel.texto("Lo que armes en Manual aparece acá.", f.normal, cfg.TEXTO_SECUNDARIO,
-                              marco.centerx, marco.centery + 52, "centro")
-            return
-        self.editor.miniatura(marco.inflate(-12, -12))
-        m = self.editor.modelo
-        resumen = (f"{len(m.racks)} racks · {len(m.zonas)} despacho · {len(m.pickers)} pickers · "
-                   f"{len(m.productos)} productos")
-        self.pincel.texto(resumen, f.normal, cfg.TEXTO_SECUNDARIO,
-                          marco.centerx, marco.bottom + 8, "centro")
 
     def _dibujar_borde_punteado(self, rect, color, paso=12):
         for x in range(rect.left + 8, rect.right - 8, paso):
@@ -946,13 +854,13 @@ class PantallaGenerador:
 
         # b) Tamaño del mapa: título + fila compacta
         cursor += cfg.ESPACIO_ENTRE_SECCIONES
-        self.pincel.texto("TAMAÑO DEL MAPA (celdas)", f.mini, cfg.TEXTO_SECUNDARIO,
+        self.pincel.texto("TAMAÑO DEL MAPA (celdas)", f.negrita, cfg.TEXTO_SECUNDARIO,
                           x0, cursor)
-        cursor += f.mini.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
+        cursor += f.negrita.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
 
         # Fila: Ancho [stepper]   Alto [stepper]   [Nuevo mapa en blanco]
         y_etiqueta = cursor + (34 - f.normal.get_height()) // 2
-        self.pincel.texto("Ancho", f.normal, cfg.TEXTO_PRINCIPAL, x0, y_etiqueta)
+        self.pincel.texto("Ancho", f.negrita, cfg.TEXTO_PRINCIPAL, x0, y_etiqueta)
         x_ancho = x0 + 56
         self.stepper_ancho.rect_menos.topleft = (x_ancho, cursor)
         self.stepper_ancho.rect_valor.topleft = (x_ancho + 40, cursor)
@@ -960,7 +868,7 @@ class PantallaGenerador:
         self.stepper_ancho.dibujar(self.pantalla)
 
         x_alto_label = x0 + 280
-        self.pincel.texto("Alto", f.normal, cfg.TEXTO_PRINCIPAL, x_alto_label, y_etiqueta)
+        self.pincel.texto("Alto", f.negrita, cfg.TEXTO_PRINCIPAL, x_alto_label, y_etiqueta)
         x_alto = x_alto_label + 46
         self.stepper_alto.rect_menos.topleft = (x_alto, cursor)
         self.stepper_alto.rect_valor.topleft = (x_alto + 40, cursor)
@@ -981,8 +889,8 @@ class PantallaGenerador:
         cursor += 34 + cfg.ESPACIO_ENTRE_SECCIONES
 
         # d) Herramientas
-        self.pincel.texto("HERRAMIENTAS", f.mini, cfg.TEXTO_SECUNDARIO, x0, cursor)
-        cursor += f.mini.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
+        self.pincel.texto("HERRAMIENTAS", f.negrita, cfg.TEXTO_SECUNDARIO, x0, cursor)
+        cursor += f.negrita.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
 
         bw = (ancho - 5 * cfg.ESPACIO_S) // 6
         bh = 44
@@ -999,8 +907,6 @@ class PantallaGenerador:
             ab["rect"].x = x_accion
             ab["rect"].y = cursor
             self._dibujar_boton_accion(ab)
-            if ab["rect"].collidepoint(pos_mouse()):
-                self.tooltip_action = (ab["rect"], f"{ab['nombre']} · {ab['atajo']}")
             x_accion += ab["rect"].w + cfg.ESPACIO_S
         if self.editor.herramienta == "pasillo":
             self._dibujar_sentidos(x_accion + cfg.ESPACIO_L, cursor)
@@ -1010,8 +916,8 @@ class PantallaGenerador:
 
         # f) Ayuda (una sola línea)
         ayuda = AYUDA_POR_HERRAMIENTA.get(self.editor.herramienta, AYUDA_GENERICA)
-        self.pincel.texto(ayuda, f.normal, COLOR_AYUDA, x0, cursor)
-        cursor += f.normal.get_height() + cfg.ESPACIO_ENTRE_SECCIONES
+        self.pincel.texto(ayuda, f.negrita, COLOR_AYUDA, x0, cursor)
+        cursor += f.negrita.get_height() + cfg.ESPACIO_ENTRE_SECCIONES
 
         # g) Estado de validación con la lista de errores
         self._dibujar_bloque_validacion(x0, cursor, ancho)
@@ -1020,8 +926,8 @@ class PantallaGenerador:
         # h) PICKERS COLOCADOS
         cantidad = len(self.editor.modelo.pickers)
         self.pincel.texto(f"PICKERS COLOCADOS ({cantidad})",
-                          f.mini, cfg.TEXTO_SECUNDARIO, x0, cursor)
-        cursor += f.mini.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
+                          f.negrita, cfg.TEXTO_SECUNDARIO, x0, cursor)
+        cursor += f.negrita.get_height() + cfg.ESPACIO_TITULO_CONTENIDO
 
         lista_alto = self._alto_lista_pickers(cantidad)
         self.lista_pickers.rect.x = x0
@@ -1037,11 +943,11 @@ class PantallaGenerador:
         coord = f"({celda[0]}, {celda[1]})" if celda else "(0, 0)"
         tamano = f"{self.editor.modelo.ancho_x} × {self.editor.modelo.largo_y}"
         self.status_bar = StatusBar(
-            pygame.Rect(x0, cursor, ancho, 34), f.chico,
+            pygame.Rect(x0, cursor, ancho, 44), f.normal, f.negrita,
         )
         self.status_bar.actualizar(self.editor.herramienta, coord, tamano)
         self.status_bar.dibujar(self.pantalla)
-        cursor += 34
+        cursor += 44
 
         self.pantalla.set_clip(None)
         self._dibujar_barra_acciones()
@@ -1057,45 +963,33 @@ class PantallaGenerador:
             pygame.draw.rect(self.pantalla, (80, 88, 104),
                              (x_scroll, y_scroll, 6, alto_barra), border_radius=3)
 
-        # Dibujar tooltip si corresponde
-        if self.tooltip_action:
-            rect, texto = self.tooltip_action
-            self._dibujar_tooltip(rect, texto)
-            self.tooltip_action = None
-
         # El modal se dibuja al final, fuera del clip del área scrollable.
         if self.confirmar_nuevo_mapa:
             self._dibujar_confirmacion_nuevo_mapa()
-        if self.editor.cuadro is not None:
-            self.editor.dibujar_cuadro()
 
     def _dibujar_sentidos(self, x, y):
-        """Botones de sentido del pasillo: ↑ ↓ → ← ↔ (el activo va resaltado)."""
+        """Botones de sentido del pasillo con el nombre del punto cardinal (el activo va resaltado)."""
         f = self.fuentes
         mouse = pos_mouse()
-        self.pincel.texto("Sentido", f.chico, cfg.TEXTO_SECUNDARIO, x,
-                          y + (36 - f.chico.get_height()) // 2)
-        x += 56
+        ancho_etiqueta = self.pincel.texto("Sentido", f.negrita, cfg.TEXTO_PRINCIPAL, x,
+                                           y + (36 - f.negrita.get_height()) // 2)
+        x += ancho_etiqueta + 14
         self.sentido_rects = {}
-        for sentido, flecha, nombre in SENTIDOS:
-            rect = pygame.Rect(x, y, 44, 36)
+        for sentido, _flecha, nombre in SENTIDOS:
+            rect = pygame.Rect(x, y, 70, 36)
             self.sentido_rects[sentido] = rect
-            sobre = rect.collidepoint(mouse)
-            if self.editor.sentido == sentido:
-                fondo, borde, color = (cfg.SENTIDO_FONDO_ACTIVO,
-                                       cfg.TOOL_BUTTON_BORDE_ACTIVO, (255, 255, 255))
-            elif sobre:
-                fondo, borde, color = (cfg.SENTIDO_FONDO_SOBRE,
-                                       cfg.BOTON_BORDE_SOBRE, cfg.SENTIDO_TEXTO)
+            activo = self.editor.sentido == sentido
+            if activo:
+                fondo, borde = cfg.TOOL_BUTTON_FONDO_ACTIVO, cfg.TOOL_BUTTON_BORDE_ACTIVO
+            elif rect.collidepoint(mouse):
+                fondo, borde = cfg.SENTIDO_FONDO_SOBRE, cfg.BOTON_BORDE_SOBRE
             else:
-                fondo, borde, color = (cfg.SENTIDO_FONDO,
-                                       cfg.TOOL_BUTTON_BORDE, cfg.SENTIDO_TEXTO)
+                fondo, borde = cfg.SENTIDO_FONDO, cfg.TOOL_BUTTON_BORDE
             pygame.draw.rect(self.pantalla, fondo, rect, border_radius=cfg.RADIO_M)
-            pygame.draw.rect(self.pantalla, borde, rect, 1, border_radius=cfg.RADIO_M)
-            img = f.negrita.render(flecha, True, color)
-            self.pantalla.blit(img, img.get_rect(center=rect.center))
-            if sobre:
-                self.tooltip_action = (rect, nombre)
+            pygame.draw.rect(self.pantalla, borde, rect, 2 if activo else 1,
+                             border_radius=cfg.RADIO_M)
+            self.pincel.texto(nombre, f.negrita, (255, 255, 255),
+                              rect.centerx, rect.centery, "cc")
             x += rect.w + 6
 
     def _dibujar_boton_accion(self, ab):
@@ -1164,7 +1058,7 @@ class PantallaGenerador:
             ancho = cfg.PANEL_CONTENIDO_W - 32
             lineas = []
             for error in errores:
-                lineas.extend(self._envolver("• " + error, self.fuentes.normal, ancho))
+                lineas.extend(self._envolver("• " + error, self.fuentes.negrita, ancho))
             self._lineas_cacheadas = lineas
         return self._lineas_cacheadas
 
@@ -1193,7 +1087,7 @@ class PantallaGenerador:
                       else f"{cantidad} errores por corregir")
             fondo, borde, color_icono, glifo = COLOR_ERROR_FONDO, cfg.ROJO, cfg.ROJO, "!"
         elif estado == "valido":
-            titulo = "Mapa válido"
+            titulo = "Warehouse válido"
             fondo, borde = COLOR_VALIDO_FONDO, cfg.VALIDACION_VALIDO
             color_icono, glifo = cfg.VALIDACION_VALIDO, "✓"
         elif estado == "vacio":
@@ -1211,38 +1105,19 @@ class PantallaGenerador:
                          border_radius=cfg.RADIO_S)
 
         cy = y + ALTO_FILA_ESTADO // 2
-        pygame.draw.circle(self.pantalla, color_icono, (x + 24, cy), 11)
-        img_glifo = f.negrita.render(glifo, True, (20, 24, 32))
-        self.pantalla.blit(img_glifo, img_glifo.get_rect(center=(x + 24, cy)))
+        mostrar_icono = estado == "error"
+        if mostrar_icono:
+            pygame.draw.circle(self.pantalla, color_icono, (x + 24, cy), 11)
+            img_glifo = f.negrita.render(glifo, True, (20, 24, 32))
+            self.pantalla.blit(img_glifo, img_glifo.get_rect(center=(x + 24, cy)))
+        margen_titulo = 46 if mostrar_icono else 16
         img_titulo = f.sub.render(titulo, True, (255, 255, 255))
-        self.pantalla.blit(img_titulo, img_titulo.get_rect(midleft=(x + 46, cy)))
+        self.pantalla.blit(img_titulo, img_titulo.get_rect(midleft=(x + margen_titulo, cy)))
 
         if estado == "error":
             for i, linea in enumerate(self._lineas_validacion()):
-                img = f.normal.render(linea, True, COLOR_ERROR_TEXTO)
+                img = f.negrita.render(linea, True, COLOR_ERROR_TEXTO)
                 self.pantalla.blit(img, (x + 16, y + ALTO_FILA_ESTADO + i * ALTO_LINEA_ERROR))
-
-    def _dibujar_tooltip(self, rect, texto):
-        """Tooltip pequeño sobre botón de acción."""
-        f = self.fuentes
-        img = f.chico.render(texto, True, (255, 255, 255))
-        pad = 6
-        tw = img.get_width() + 2 * pad
-        th = img.get_height() + 2 * pad
-        tx = rect.centerx - tw // 2
-        ty = rect.top - th - 6
-        # Mantener dentro de pantalla
-        if tx < 0:
-            tx = 0
-        if tx + tw > cfg.ANCHO:
-            tx = cfg.ANCHO - tw
-        if ty < 0:
-            ty = rect.bottom + 6
-        sup = pygame.Surface((tw, th), pygame.SRCALPHA)
-        pygame.draw.rect(sup, (40, 44, 56, 230), sup.get_rect(), border_radius=4)
-        pygame.draw.rect(sup, cfg.ACENTO, sup.get_rect(), 1, border_radius=4)
-        self.pantalla.blit(sup, (tx, ty))
-        self.pantalla.blit(img, (tx + pad, ty + pad))
 
     def _dibujar_confirmacion_nuevo_mapa(self):
         ancho, alto = 440, 190
