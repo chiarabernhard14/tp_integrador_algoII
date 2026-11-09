@@ -63,7 +63,6 @@ python .\proyeto_integrador\visualization\Main.py --escenario "$env:USERPROFILE\
 - **Cargar escenario / Guardar escenario**: abren o guardan un diseño de warehouse.
 - **Cargar partida / Guardar partida**: reanudan o guardan el progreso de una simulación.
 
-Atajos disponibles durante la simulación: `Espacio` para iniciar, pausar o continuar; `N` para un paso; `R` para reiniciar; `+` y `-` para la velocidad; `I` para mostrar u ocultar intersecciones.
 
 ### Generar escenarios
 
